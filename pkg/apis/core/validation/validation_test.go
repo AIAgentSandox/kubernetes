@@ -8822,7 +8822,7 @@ func TestValidateContainers(t *testing.T) {
 			ImagePullPolicy:          "IfNotPresent",
 			TerminationMessagePolicy: "File",
 			Lifecycle: &core.Lifecycle{
-				StopSignal: ptr.To(core.SIGTERM),
+				StopSignal: ptr.To(core.SignalSIGTERM),
 			},
 		},
 	}
@@ -11465,7 +11465,7 @@ func TestValidatePod(t *testing.T) {
 			podtest.SetContainers(podtest.MakeContainer(
 				"test-container",
 				podtest.SetContainerImage("image"),
-				podtest.SetContainerLifecycle(core.Lifecycle{StopSignal: ptr.To(core.SIGTERM)}),
+				podtest.SetContainerLifecycle(core.Lifecycle{StopSignal: ptr.To(core.SignalSIGTERM)}),
 			)),
 		),
 		"Pod with valid StopSignal and valid OS (Windows)": *podtest.MakePod("test-pod",
@@ -11473,7 +11473,7 @@ func TestValidatePod(t *testing.T) {
 			podtest.SetContainers(podtest.MakeContainer(
 				"test-container",
 				podtest.SetContainerImage("image"),
-				podtest.SetContainerLifecycle(core.Lifecycle{StopSignal: ptr.To(core.SIGTERM)}),
+				podtest.SetContainerLifecycle(core.Lifecycle{StopSignal: ptr.To(core.SignalSIGTERM)}),
 			)),
 		),
 	}
@@ -13068,7 +13068,7 @@ func TestValidatePod(t *testing.T) {
 				podtest.SetContainers(podtest.MakeContainer(
 					"test-container",
 					podtest.SetContainerImage("image"),
-					podtest.SetContainerLifecycle(core.Lifecycle{StopSignal: ptr.To(core.SIGTERM)}),
+					podtest.SetContainerLifecycle(core.Lifecycle{StopSignal: ptr.To(core.SignalSIGTERM)}),
 				)),
 			),
 		},
@@ -13079,7 +13079,7 @@ func TestValidatePod(t *testing.T) {
 				podtest.SetContainers(podtest.MakeContainer(
 					"test-container",
 					podtest.SetContainerImage("image"),
-					podtest.SetContainerLifecycle(core.Lifecycle{StopSignal: ptr.To(core.SIGHUP)}),
+					podtest.SetContainerLifecycle(core.Lifecycle{StopSignal: ptr.To(core.SignalSIGHUP)}),
 				)),
 			),
 		},
@@ -29451,9 +29451,9 @@ func TestValidateNodeSwapStatus(t *testing.T) {
 
 func TestValidateStopSignal(t *testing.T) {
 	fldPath := field.NewPath("root")
-	sigkill := core.SIGKILL
-	sigterm := core.SIGTERM
-	sighup := core.SIGHUP
+	sigkill := core.SignalSIGKILL
+	sigterm := core.SignalSIGTERM
+	sighup := core.SignalSIGHUP
 	linux := core.PodOS{Name: core.Linux}
 	windows := core.PodOS{Name: core.Windows}
 

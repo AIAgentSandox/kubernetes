@@ -3862,23 +3862,23 @@ func TestDropContainerStopSignals(t *testing.T) {
 		// feature gate is turned off and StopSignal is in use - StopSignal is not dropped
 		{
 			featuregateEnabled: false,
-			oldLifecycle:       &api.Lifecycle{StopSignal: ptr.To(api.SIGTERM)},
-			newLifecycle:       &api.Lifecycle{StopSignal: ptr.To(api.SIGTERM)},
-			expectedLifecycle:  &api.Lifecycle{StopSignal: ptr.To(api.SIGTERM)},
+			oldLifecycle:       &api.Lifecycle{StopSignal: ptr.To(api.SignalSIGTERM)},
+			newLifecycle:       &api.Lifecycle{StopSignal: ptr.To(api.SignalSIGTERM)},
+			expectedLifecycle:  &api.Lifecycle{StopSignal: ptr.To(api.SignalSIGTERM)},
 		},
 		// feature gate is turned off and StopSignal is not in use - Entire lifecycle is dropped
 		{
 			featuregateEnabled: false,
 			oldLifecycle:       &api.Lifecycle{StopSignal: nil},
-			newLifecycle:       &api.Lifecycle{StopSignal: ptr.To(api.SIGTERM)},
+			newLifecycle:       &api.Lifecycle{StopSignal: ptr.To(api.SignalSIGTERM)},
 			expectedLifecycle:  nil,
 		},
 		// feature gate is turned on and StopSignal is in use - StopSignal is not dropped
 		{
 			featuregateEnabled: true,
 			oldLifecycle:       &api.Lifecycle{StopSignal: nil},
-			newLifecycle:       &api.Lifecycle{StopSignal: ptr.To(api.SIGTERM)},
-			expectedLifecycle:  &api.Lifecycle{StopSignal: ptr.To(api.SIGTERM)},
+			newLifecycle:       &api.Lifecycle{StopSignal: ptr.To(api.SignalSIGTERM)},
+			expectedLifecycle:  &api.Lifecycle{StopSignal: ptr.To(api.SignalSIGTERM)},
 		},
 		// feature gate is turned off and PreStop is in use - StopSignal alone is dropped
 		{
@@ -3886,7 +3886,7 @@ func TestDropContainerStopSignals(t *testing.T) {
 			oldLifecycle: &api.Lifecycle{StopSignal: nil, PreStop: &api.LifecycleHandler{
 				Exec: &api.ExecAction{Command: []string{"foo"}},
 			}},
-			newLifecycle: &api.Lifecycle{StopSignal: ptr.To(api.SIGTERM), PreStop: &api.LifecycleHandler{
+			newLifecycle: &api.Lifecycle{StopSignal: ptr.To(api.SignalSIGTERM), PreStop: &api.LifecycleHandler{
 				Exec: &api.ExecAction{Command: []string{"foo"}},
 			}},
 			expectedLifecycle: &api.Lifecycle{StopSignal: nil, PreStop: &api.LifecycleHandler{
@@ -3899,23 +3899,23 @@ func TestDropContainerStopSignals(t *testing.T) {
 			oldLifecycle: &api.Lifecycle{StopSignal: nil, PreStop: &api.LifecycleHandler{
 				Exec: &api.ExecAction{Command: []string{"foo"}},
 			}},
-			newLifecycle: &api.Lifecycle{StopSignal: ptr.To(api.SIGTERM), PreStop: &api.LifecycleHandler{
+			newLifecycle: &api.Lifecycle{StopSignal: ptr.To(api.SignalSIGTERM), PreStop: &api.LifecycleHandler{
 				Exec: &api.ExecAction{Command: []string{"foo"}},
 			}},
-			expectedLifecycle: &api.Lifecycle{StopSignal: ptr.To(api.SIGTERM), PreStop: &api.LifecycleHandler{
+			expectedLifecycle: &api.Lifecycle{StopSignal: ptr.To(api.SignalSIGTERM), PreStop: &api.LifecycleHandler{
 				Exec: &api.ExecAction{Command: []string{"foo"}},
 			}},
 		},
 		// feature gate is turned off and PreStop and StopSignal are in use - nothing is dropped
 		{
 			featuregateEnabled: true,
-			oldLifecycle: &api.Lifecycle{StopSignal: ptr.To(api.SIGTERM), PreStop: &api.LifecycleHandler{
+			oldLifecycle: &api.Lifecycle{StopSignal: ptr.To(api.SignalSIGTERM), PreStop: &api.LifecycleHandler{
 				Exec: &api.ExecAction{Command: []string{"foo"}},
 			}},
-			newLifecycle: &api.Lifecycle{StopSignal: ptr.To(api.SIGTERM), PreStop: &api.LifecycleHandler{
+			newLifecycle: &api.Lifecycle{StopSignal: ptr.To(api.SignalSIGTERM), PreStop: &api.LifecycleHandler{
 				Exec: &api.ExecAction{Command: []string{"foo"}},
 			}},
-			expectedLifecycle: &api.Lifecycle{StopSignal: ptr.To(api.SIGTERM), PreStop: &api.LifecycleHandler{
+			expectedLifecycle: &api.Lifecycle{StopSignal: ptr.To(api.SignalSIGTERM), PreStop: &api.LifecycleHandler{
 				Exec: &api.ExecAction{Command: []string{"foo"}},
 			}},
 		},

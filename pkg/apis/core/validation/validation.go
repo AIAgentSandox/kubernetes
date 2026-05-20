@@ -3543,27 +3543,27 @@ func validateHandler(handler commonHandler, gracePeriod *int64, fldPath *field.P
 }
 
 var supportedStopSignalsLinux = sets.New(
-	core.SIGABRT, core.SIGALRM, core.SIGBUS, core.SIGCHLD,
-	core.SIGCLD, core.SIGCONT, core.SIGFPE, core.SIGHUP,
-	core.SIGILL, core.SIGINT, core.SIGIO, core.SIGIOT,
-	core.SIGKILL, core.SIGPIPE, core.SIGPOLL, core.SIGPROF,
-	core.SIGPWR, core.SIGQUIT, core.SIGSEGV, core.SIGSTKFLT,
-	core.SIGSTOP, core.SIGSYS, core.SIGTERM, core.SIGTRAP,
-	core.SIGTSTP, core.SIGTTIN, core.SIGTTOU, core.SIGURG,
-	core.SIGUSR1, core.SIGUSR2, core.SIGVTALRM, core.SIGWINCH,
-	core.SIGXCPU, core.SIGXFSZ, core.SIGRTMIN, core.SIGRTMINPLUS1,
-	core.SIGRTMINPLUS2, core.SIGRTMINPLUS3, core.SIGRTMINPLUS4,
-	core.SIGRTMINPLUS5, core.SIGRTMINPLUS6, core.SIGRTMINPLUS7,
-	core.SIGRTMINPLUS8, core.SIGRTMINPLUS9, core.SIGRTMINPLUS10,
-	core.SIGRTMINPLUS11, core.SIGRTMINPLUS12, core.SIGRTMINPLUS13,
-	core.SIGRTMINPLUS14, core.SIGRTMINPLUS15, core.SIGRTMAXMINUS14,
-	core.SIGRTMAXMINUS13, core.SIGRTMAXMINUS12, core.SIGRTMAXMINUS11,
-	core.SIGRTMAXMINUS10, core.SIGRTMAXMINUS9, core.SIGRTMAXMINUS8,
-	core.SIGRTMAXMINUS7, core.SIGRTMAXMINUS6, core.SIGRTMAXMINUS5,
-	core.SIGRTMAXMINUS4, core.SIGRTMAXMINUS3, core.SIGRTMAXMINUS2,
-	core.SIGRTMAXMINUS1, core.SIGRTMAX)
+	core.SignalSIGABRT, core.SignalSIGALRM, core.SignalSIGBUS, core.SignalSIGCHLD,
+	core.SignalSIGCLD, core.SignalSIGCONT, core.SignalSIGFPE, core.SignalSIGHUP,
+	core.SignalSIGILL, core.SignalSIGINT, core.SignalSIGIO, core.SignalSIGIOT,
+	core.SignalSIGKILL, core.SignalSIGPIPE, core.SignalSIGPOLL, core.SignalSIGPROF,
+	core.SignalSIGPWR, core.SignalSIGQUIT, core.SignalSIGSEGV, core.SignalSIGSTKFLT,
+	core.SignalSIGSTOP, core.SignalSIGSYS, core.SignalSIGTERM, core.SignalSIGTRAP,
+	core.SignalSIGTSTP, core.SignalSIGTTIN, core.SignalSIGTTOU, core.SignalSIGURG,
+	core.SignalSIGUSR1, core.SignalSIGUSR2, core.SignalSIGVTALRM, core.SignalSIGWINCH,
+	core.SignalSIGXCPU, core.SignalSIGXFSZ, core.SignalSIGRTMIN, core.SignalSIGRTMINPLUS1,
+	core.SignalSIGRTMINPLUS2, core.SignalSIGRTMINPLUS3, core.SignalSIGRTMINPLUS4,
+	core.SignalSIGRTMINPLUS5, core.SignalSIGRTMINPLUS6, core.SignalSIGRTMINPLUS7,
+	core.SignalSIGRTMINPLUS8, core.SignalSIGRTMINPLUS9, core.SignalSIGRTMINPLUS10,
+	core.SignalSIGRTMINPLUS11, core.SignalSIGRTMINPLUS12, core.SignalSIGRTMINPLUS13,
+	core.SignalSIGRTMINPLUS14, core.SignalSIGRTMINPLUS15, core.SignalSIGRTMAXMINUS14,
+	core.SignalSIGRTMAXMINUS13, core.SignalSIGRTMAXMINUS12, core.SignalSIGRTMAXMINUS11,
+	core.SignalSIGRTMAXMINUS10, core.SignalSIGRTMAXMINUS9, core.SignalSIGRTMAXMINUS8,
+	core.SignalSIGRTMAXMINUS7, core.SignalSIGRTMAXMINUS6, core.SignalSIGRTMAXMINUS5,
+	core.SignalSIGRTMAXMINUS4, core.SignalSIGRTMAXMINUS3, core.SignalSIGRTMAXMINUS2,
+	core.SignalSIGRTMAXMINUS1, core.SignalSIGRTMAX)
 
-var supportedStopSignalsWindows = sets.New(core.SIGKILL, core.SIGTERM)
+var supportedStopSignalsWindows = sets.New(core.SignalSIGKILL, core.SignalSIGTERM)
 
 func validateStopSignal(stopSignal *core.Signal, fldPath *field.Path, os *core.PodOS) field.ErrorList {
 	allErrors := field.ErrorList{}

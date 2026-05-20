@@ -769,7 +769,7 @@ var _ = SIGDescribe(feature.ContainerStopSignals, framework.WithFeatureGate(feat
 	f := framework.NewDefaultFramework("container-stop-signals")
 	f.NamespacePodSecurityLevel = admissionapi.LevelBaseline
 	var podClient *e2epod.PodClient
-	sigterm := v1.SIGTERM
+	sigterm := v1.SignalSIGTERM
 	podName := "pod-" + utilrand.String(5)
 
 	ginkgo.Context("when create a pod with a StopSignal lifecycle", func() {
