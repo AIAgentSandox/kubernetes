@@ -9,7 +9,7 @@ Propagate `context.Context` from the kubelet's pod-admission entry points all th
 3. The `topologymanager.HintProvider` interface (`GetTopologyHints`, `GetPodTopologyHints`, `Allocate`, `AllocatePod`).
 4. The `allocation.Manager` admission paths (`AddPod`, `handlePodResourcesResize`, `canAdmitPod`).
 
-Per the task description, where a method currently accepts an explicit `klog.Logger` / `logr.Logger` as its only "context-carrier" parameter and is being given a `ctx`, replace the logger parameter with `ctx` (extracting the logger via `klog.FromContext(ctx)` inside the function) rather than passing both. Where a method is reached from a non-admission path that has only a logger today (e.g. `AddContainer`, `RemoveContainer`, policy `Start`, reconcile loops), keep the existing logger signature — this PR scopes the change to the admission → device-plugin chain.
+**Logger replacement rule (enforced everywhere in this PR):** whenever a function on the admission → device-plugin chain previously took an explicit `klog.Logger` / `logr.Logger` parameter and is being given a `ctx`, drop the logger parameter and extract it via `logger := klog.FromContext(ctx)` inside the function. **Never pass both `ctx` and an explicit logger.** This applies to the function signature, every caller, every test, and every fake/mock. The only logger parameters that survive this PR are on methods reached **exclusively** from non-admission paths (e.g. `AddContainer`, `RemoveContainer`, reconcile, `Start`, `GetCapacity`, GC), which are out of scope. If a method is reached from both an admission path and a non-admission path, switch it to `ctx` and update the non-admission caller to pass a `ctx` (using its own `ctx` if available, or `context.TODO()` with a `// TODO: plumb ctx from caller` comment if not — but never both parameters).
 
 ## Context
 
@@ -41,7 +41,7 @@ Per the task description, where a method currently accepts an explicit `klog.Log
 - **Testing approach**: Follow the repository's existing testing practices — every package touched in this plan already has table-driven tests using `ktesting.NewTestContext(t)` (CPU/memory/device managers, topology manager, eviction, sysctl, nodeshutdown, allocation, kubelet). Update the existing tests to pass `ctx` where signatures change; do not invent new test harnesses.
 - Complete each task fully (signature change + all callers + all tests + `go build ./... && go test ./pkg/kubelet/...` for the affected packages) before moving to the next.
 - **CRITICAL: all tests must pass before starting next task** — including `go vet ./pkg/kubelet/...` and the relevant package's unit tests.
-- Use `klog.FromContext(ctx)` inside any function that previously had `logger := klog.TODO()` and is now given a `ctx`. Do not keep both the logger parameter and ctx unless the function is reached from both an admission path (ctx-aware) and a non-admission path (logger-only).
+- Use `klog.FromContext(ctx)` inside any function that previously had `logger := klog.TODO()` and is now given a `ctx`. **Never keep both an explicit logger parameter and a `ctx` parameter on the same function.** When in doubt, drop the logger and extract from `ctx`.
 - Stage the change layer-by-layer (leaves last → roots first is impractical here because all signatures cascade); instead, change one interface plus its implementations and direct callers per task, leaving compilation green at the end of each task. Run `hack/update-codegen.sh` is **not** needed (no generated code changes).
 - When updating an interface, also update mocks/fakes in the same task (e.g. `fake_topology_manager.go`, `fake_cpu_manager.go`, `fake_memory_manager.go`, `MockEndpoint` in `manager_test.go`).
 
@@ -62,25 +62,27 @@ Promote `ctx` to a first-class parameter on the interface that gates all kubelet
 - Modify: `pkg/kubelet/cm/topologymanager/topology_manager.go` (`manager.Admit` — accept `ctx` from caller, drop `context.TODO()`)
 - Modify: `pkg/kubelet/cm/topologymanager/fake_topology_manager.go` (`fakeManager.Admit`)
 - Modify: `pkg/kubelet/cm/container_manager_windows.go` (`noopWindowsResourceAllocator.Admit`)
-- Modify: `pkg/kubelet/allocation/handlers.go` (`podResizesAdmitHandler.Admit` — uses `h.logger`; either keep `h.logger` as fallback for callers without ctx, or extract via `klog.FromContext(ctx)`; prefer the latter and drop the `logger` field)
+- Modify: `pkg/kubelet/allocation/handlers.go` (`podResizesAdmitHandler.Admit` — drop the `h.logger` field; the constructor `NewPodResizesAdmitHandler` loses its `logger klog.Logger` parameter; inside `Admit`, use `klog.FromContext(ctx)`)
 - Modify: `pkg/kubelet/allocation/allocation_manager.go` (`canAdmitPod` — pass `ctx` into `podAdmitHandler.Admit(ctx, attrs)`; see Task 7)
 - Modify: tests for every file above. Each test already calls `Admit(attrs)`; switch to `Admit(ctx, attrs)` using `_, ctx := ktesting.NewTestContext(t)` (the import is already used widely in these packages).
 
 - [ ] Update `PodAdmitHandler.Admit` interface signature in `pkg/kubelet/lifecycle/interfaces.go` to `Admit(ctx context.Context, attrs *PodAdmitAttributes) PodAdmitResult` and add `import "context"`.
 - [ ] Update every concrete implementation (8+ types listed above) to accept `ctx` and pass it through. In `predicate.go` replace `ctx := context.TODO()` with the parameter; in `topology_manager.go` `Admit` replace the inline `context.TODO()` and remove the TODO comment at lines 263–264.
+- [ ] In `pkg/kubelet/allocation/handlers.go`, drop the `logger klog.Logger` field on `podResizesAdmitHandler` and the `logger` parameter on `NewPodResizesAdmitHandler`. Inside `Admit`, extract `logger := klog.FromContext(ctx)` if logging is performed.
+- [ ] Update `kubelet.go` `NewPodResizesAdmitHandler(...)` call site (around `kubelet.go:1166`) to drop the logger argument.
 - [ ] Update `allocation.manager.canAdmitPod` to accept `ctx` (see Task 7) and pass it into every `podAdmitHandler.Admit(ctx, attrs)` call in the loop.
 - [ ] Update every test that calls `.Admit(attrs)` on a `PodAdmitHandler` to pass `ctx` from `ktesting.NewTestContext(t)`. Files include `eviction_manager_test.go`, `nodeshutdown_manager_linux_test.go`, `allowlist_test.go`, `fake_topology_manager_test.go`, `kubelet_test.go` (`testPodAdmitHandler.Admit`), and `allocation/*_test.go`.
 - [ ] Run `go build ./pkg/kubelet/... && go test ./pkg/kubelet/lifecycle/... ./pkg/kubelet/eviction/... ./pkg/kubelet/sysctl/... ./pkg/kubelet/nodeshutdown/... ./pkg/kubelet/cm/topologymanager/... ./pkg/kubelet/allocation/...`.
 
 ### Task 2: Thread `ctx` through `topologymanager.HintProvider`
 
-The HintProvider interface is the contract between TopologyManager and the CPU/Memory/Device managers. Adding `ctx` here unlocks ctx-aware calls inside `Scope.Admit` (which already has `ctx`) and lets the underlying managers stop fabricating `klog.TODO()`. Per the task description, when a HintProvider method had only a `klog.Logger` parameter (none currently — they take only pod/container), we are adding `ctx`; when a callee inside the manager had `logger klog.Logger`, replace it with `ctx` if the entire call chain is being made ctx-aware.
+The HintProvider interface is the contract between TopologyManager and the CPU/Memory/Device managers. Adding `ctx` here unlocks ctx-aware calls inside `Scope.Admit` (which already has `ctx`) and lets the underlying managers stop fabricating `klog.TODO()`. Per the logger-replacement rule, **drop any pre-existing `klog.Logger` parameter from helpers in `scope_container.go` and `scope_pod.go`** as `ctx` is added; extract `logger := klog.FromContext(ctx)` once at the top of each function that needs it.
 
 **Files:**
 - Modify: `pkg/kubelet/cm/topologymanager/topology_manager.go` (`HintProvider` interface, lines 106–124)
 - Modify: `pkg/kubelet/cm/topologymanager/scope.go` (`allocateAlignedResources`, `allocatePodAlignedResources` — accept `ctx` from `Scope.Admit`; pass to `provider.Allocate` / `provider.AllocatePod`; pass to `admitPolicyNone` which currently has no ctx)
-- Modify: `pkg/kubelet/cm/topologymanager/scope_container.go` (`accumulateProvidersHints`, `calculateAffinity` — pass `ctx`; `provider.GetTopologyHints(ctx, …)`)
-- Modify: `pkg/kubelet/cm/topologymanager/scope_pod.go` (`accumulateProvidersHints`, `calculateAffinity`, `admitUsingContainerResources`, `admitUsingPodResources` — pass `ctx`; `provider.GetPodTopologyHints(ctx, …)`)
+- Modify: `pkg/kubelet/cm/topologymanager/scope_container.go` (`accumulateProvidersHints`, `calculateAffinity` — accept `ctx`; **drop any existing `logger klog.Logger` parameter**; extract logger via `klog.FromContext(ctx)` inside if needed; `provider.GetTopologyHints(ctx, …)`)
+- Modify: `pkg/kubelet/cm/topologymanager/scope_pod.go` (`accumulateProvidersHints`, `calculateAffinity`, `admitUsingContainerResources`, `admitUsingPodResources` — accept `ctx`; **drop any existing `logger klog.Logger` parameter**; extract via `klog.FromContext(ctx)` inside; `provider.GetPodTopologyHints(ctx, …)`)
 - Modify: `pkg/kubelet/cm/topologymanager/scope_none.go` (`noneScope.Admit` already takes `ctx`; just forward it)
 - Modify: `pkg/kubelet/cm/topologymanager/topology_manager_test.go` (`mockHintProvider` — update signatures; update `TestAdmit` to pass `ctx`)
 - Modify: `pkg/kubelet/cm/topologymanager/scope_container_test.go` (`calculateAffinity` calls)
@@ -89,56 +91,56 @@ The HintProvider interface is the contract between TopologyManager and the CPU/M
 
 - [ ] Change `HintProvider` interface (`GetTopologyHints`, `GetPodTopologyHints`, `Allocate`, `AllocatePod`) to take `ctx context.Context` as the first parameter.
 - [ ] Update `scope.allocateAlignedResources` to take `ctx`; update `scope.allocatePodAlignedResources` to take `ctx`; update `scope.admitPolicyNone` to take `ctx`; thread `ctx` from `Scope.Admit` through these helpers.
-- [ ] Update `containerScope.accumulateProvidersHints` and `calculateAffinity` to take `ctx` (drop `logger klog.Logger` parameter or keep both — keep `logger` because the existing logger plumbing inside is fine; just extract once at the top of `Admit` and pass `ctx` to providers).
-- [ ] Update `podScope.accumulateProvidersHints` and `calculateAffinity` similarly.
+- [ ] Update `containerScope.accumulateProvidersHints` and `calculateAffinity` to take `ctx`; **delete the existing `logger klog.Logger` parameter** (if present); inside, extract `logger := klog.FromContext(ctx)` once.
+- [ ] Update `podScope.accumulateProvidersHints` and `calculateAffinity` similarly — drop any `klog.Logger` parameter; extract from `ctx` inside.
 - [ ] Update `mockHintProvider` and all tests under `pkg/kubelet/cm/topologymanager/` to pass `ctx` from `ktesting.NewTestContext(t)`.
-- [ ] Provider implementations (CPU/Memory/Device managers) are updated in Tasks 3–5; for this task, leave their `Manager.GetTopologyHints` etc. signatures temporarily compatible by adding a `ctx context.Context` parameter and discarding it (`_ = ctx`). They will be wired up properly in subsequent tasks. Alternative: do this task in one commit alongside Tasks 3–5; either is fine. Recommended split: complete this task by also doing the minimal interface-signature change on each Manager (just to make compile pass) and defer internal cleanup of `klog.TODO()` to Tasks 3–5.
+- [ ] To keep the tree compiling at the end of this task, also perform the **interface-signature-only** edits on the CPU/Memory/Device managers' `Allocate`/`AllocatePod`/`GetTopologyHints`/`GetPodTopologyHints` (just add `ctx context.Context` as the first parameter and use `_ = ctx` inside if needed). The full internal cleanup of `klog.TODO()` and the logger-parameter removal inside those managers is done in Tasks 3–5.
 - [ ] Run `go build ./pkg/kubelet/cm/... && go test ./pkg/kubelet/cm/topologymanager/...`.
 
 ### Task 3: Thread `ctx` through CPU Manager admission paths
 
-Eliminate the `klog.TODO()` lines at `pkg/kubelet/cm/cpumanager/cpu_manager.go:270, 289, 358, 366`. The CPU policies currently take `logger logr.Logger`; per the task description, where a function is being given a `ctx` and previously had only a logger parameter for context-like state, replace the logger parameter with `ctx` and extract the logger via `klog.FromContext(ctx)`.
+Eliminate the `klog.TODO()` lines at `pkg/kubelet/cm/cpumanager/cpu_manager.go:270, 289, 358, 366`. The CPU policies currently take `logger logr.Logger` on their admission methods; per the logger-replacement rule, **delete the `logger logr.Logger` parameter** when `ctx` is added and extract it via `klog.FromContext(ctx)` inside the implementation.
 
 **Files:**
 - Modify: `pkg/kubelet/cm/cpumanager/cpu_manager.go` (`Manager` interface methods `Allocate`, `AllocatePod`, `GetTopologyHints`, `GetPodTopologyHints` — add `ctx`; `manager.*` implementations drop their `klog.TODO()`)
-- Modify: `pkg/kubelet/cm/cpumanager/policy.go` (`Policy` interface — `Allocate`, `AllocatePod`, `GetTopologyHints`, `GetPodTopologyHints`: replace `logger logr.Logger` with `ctx context.Context`)
-- Modify: `pkg/kubelet/cm/cpumanager/policy_none.go`, `policy_static.go` — update signatures, extract `logger := klog.FromContext(ctx)` at top of each method that needs logging
-- Modify: `pkg/kubelet/cm/cpumanager/fake_cpu_manager.go` — update fake to match
-- Modify: `pkg/kubelet/cm/cpumanager/cpu_manager_test.go` (`mockPolicy` + all `Allocate`/hint test calls)
-- Modify: `pkg/kubelet/cm/cpumanager/policy_none_test.go`, `policy_static_test.go`, `topology_hints_test.go` — pass `ctx`
+- Modify: `pkg/kubelet/cm/cpumanager/policy.go` (`Policy` interface — `Allocate`, `AllocatePod`, `GetTopologyHints`, `GetPodTopologyHints`: **replace `logger logr.Logger` with `ctx context.Context`**)
+- Modify: `pkg/kubelet/cm/cpumanager/policy_none.go`, `policy_static.go` — update signatures; **delete the `logger logr.Logger` parameter**; extract `logger := klog.FromContext(ctx)` at top of each method that needs logging
+- Modify: `pkg/kubelet/cm/cpumanager/fake_cpu_manager.go` — update fake to match (no logger parameter on admission methods)
+- Modify: `pkg/kubelet/cm/cpumanager/cpu_manager_test.go` (`mockPolicy` + all `Allocate`/hint test calls) — drop any logger argument; pass `ctx`
+- Modify: `pkg/kubelet/cm/cpumanager/policy_none_test.go`, `policy_static_test.go`, `topology_hints_test.go` — pass `ctx`; drop logger argument
 - Leave alone (do not touch in this task): `AddContainer`, `RemoveContainer`, `policyRemoveContainer*`, `Start`, `reconcileState` — these are not on the admission path; they keep their existing `logger logr.Logger` / `ctx` signatures.
 
-- [ ] `cpu_manager.go` `Manager` interface: `Allocate(ctx, pod, container)`, `AllocatePod(ctx, pod)`, `GetTopologyHints(ctx, pod, container)`, `GetPodTopologyHints(ctx, pod)`.
-- [ ] `cpu_manager.go` `manager.*` impls: drop `klog.TODO()`, use `klog.FromContext(ctx)`, pass `ctx` into `m.policy.*` calls.
-- [ ] `policy.go` `Policy` interface: replace `logger logr.Logger` with `ctx context.Context` on `Allocate`, `AllocatePod`, `GetTopologyHints`, `GetPodTopologyHints` (keep `state.State`, `*v1.Pod`, `*v1.Container` arguments).
-- [ ] `policy_none.go`, `policy_static.go`: update impls; extract logger via `klog.FromContext(ctx)` inside.
-- [ ] `fake_cpu_manager.go`: update fake signatures.
-- [ ] `cpu_manager_test.go`, `policy_none_test.go`, `policy_static_test.go`, `topology_hints_test.go`: use `_, ctx := ktesting.NewTestContext(t)` and pass `ctx`.
+- [ ] `cpu_manager.go` `Manager` interface: `Allocate(ctx, pod, container)`, `AllocatePod(ctx, pod)`, `GetTopologyHints(ctx, pod, container)`, `GetPodTopologyHints(ctx, pod)`. **No logger parameter on any of these.**
+- [ ] `cpu_manager.go` `manager.*` impls: drop `klog.TODO()`, use `klog.FromContext(ctx)`, pass `ctx` into `m.policy.*` calls (without a logger argument).
+- [ ] `policy.go` `Policy` interface: **replace `logger logr.Logger` with `ctx context.Context`** on `Allocate`, `AllocatePod`, `GetTopologyHints`, `GetPodTopologyHints` (keep `state.State`, `*v1.Pod`, `*v1.Container` arguments).
+- [ ] `policy_none.go`, `policy_static.go`: update impls — delete the `logger logr.Logger` parameter; extract logger via `klog.FromContext(ctx)` inside.
+- [ ] `fake_cpu_manager.go`: update fake signatures (no logger parameter on admission methods).
+- [ ] `cpu_manager_test.go`, `policy_none_test.go`, `policy_static_test.go`, `topology_hints_test.go`: use `_, ctx := ktesting.NewTestContext(t)` and pass `ctx` (drop any explicit logger argument).
 - [ ] Run `go build ./pkg/kubelet/cm/cpumanager/... && go test ./pkg/kubelet/cm/cpumanager/...`.
 
 ### Task 4: Thread `ctx` through Memory Manager admission paths
 
-Mirror Task 3 for the memory manager. Eliminate `klog.TODO()` at `pkg/kubelet/cm/memorymanager/memory_manager.go:268, 283`. Memory policies currently take `klog.Logger` — replace with `ctx`.
+Mirror Task 3 for the memory manager. Eliminate `klog.TODO()` at `pkg/kubelet/cm/memorymanager/memory_manager.go:268, 283`. Memory policies currently take `klog.Logger` on their admission methods — **delete it** and extract via `klog.FromContext(ctx)` instead.
 
 **Files:**
 - Modify: `pkg/kubelet/cm/memorymanager/memory_manager.go` (`Manager` interface `Allocate`, `AllocatePod`, `GetTopologyHints`, `GetPodTopologyHints`)
-- Modify: `pkg/kubelet/cm/memorymanager/policy.go` (`Policy` interface — replace `klog.Logger` with `ctx`)
-- Modify: `pkg/kubelet/cm/memorymanager/policy_none.go`, `policy_static.go`, `policy_best_effort.go` — update signatures
+- Modify: `pkg/kubelet/cm/memorymanager/policy.go` (`Policy` interface — **replace `klog.Logger` parameter with `ctx`**; do not keep both)
+- Modify: `pkg/kubelet/cm/memorymanager/policy_none.go`, `policy_static.go`, `policy_best_effort.go` — update signatures; drop the `klog.Logger` parameter; extract from `ctx`
 - Modify: `pkg/kubelet/cm/memorymanager/fake_memory_manager.go`
 - Modify: `pkg/kubelet/cm/memorymanager/memory_manager_test.go` (`mockPolicy`, `TestAddContainer`, `TestGetTopologyHints`, `TestAllocateAndAddPodWithInitContainers`, etc.)
 - Modify: `pkg/kubelet/cm/memorymanager/policy_static_test.go`
 - Leave alone: `GetMemoryNUMANodes`, `RemoveContainer`, `AddContainer` (non-admission, keep `klog.Logger` param)
 
-- [ ] Update `Manager` interface and `manager.*` impls.
-- [ ] Update `Policy` interface (Allocate/AllocatePod/GetTopologyHints/GetPodTopologyHints): `logger klog.Logger` → `ctx context.Context`.
-- [ ] Update `policy_none.go`, `policy_static.go`, `policy_best_effort.go` impls.
+- [ ] Update `Manager` interface and `manager.*` impls — admission methods take `ctx` only (no logger).
+- [ ] Update `Policy` interface (Allocate/AllocatePod/GetTopologyHints/GetPodTopologyHints): **`logger klog.Logger` → `ctx context.Context`** (replace, not append).
+- [ ] Update `policy_none.go`, `policy_static.go`, `policy_best_effort.go` impls — drop the logger parameter; extract via `klog.FromContext(ctx)` inside.
 - [ ] Update `fake_memory_manager.go`.
-- [ ] Update all tests (`memory_manager_test.go`, `policy_static_test.go`) to pass `ctx`.
+- [ ] Update all tests (`memory_manager_test.go`, `policy_static_test.go`) to pass `ctx` and remove any logger argument.
 - [ ] Run `go build ./pkg/kubelet/cm/memorymanager/... && go test ./pkg/kubelet/cm/memorymanager/...`.
 
 ### Task 5: Thread `ctx` through Device Manager admission paths
 
-Eliminate the `ctx := context.TODO()` at `pkg/kubelet/cm/devicemanager/manager.go:398`, and the `klog.TODO()` calls in `topology_hints.go:36, 91, 250`. The lower layers (`allocateContainerResources`, `devicesToAllocate`, endpoint RPCs) already accept `ctx` — this task connects them to the admission entry points.
+Eliminate the `ctx := context.TODO()` at `pkg/kubelet/cm/devicemanager/manager.go:398`, and the `klog.TODO()` calls in `topology_hints.go:36, 91, 250`. The lower layers (`allocateContainerResources`, `devicesToAllocate`, endpoint RPCs) already accept `ctx` — this task connects them to the admission entry points. Device-manager admission methods do not currently have an explicit logger parameter (they construct `klog.TODO()` internally), so the rule "don't pass both" reduces here to "use `klog.FromContext(ctx)` and delete the local `klog.TODO()`".
 
 **Files:**
 - Modify: `pkg/kubelet/cm/devicemanager/types.go` (`Manager` interface: `Allocate`, `AllocatePod`, `GetTopologyHints`, `GetPodTopologyHints` — add `ctx`)
@@ -166,35 +168,50 @@ After Tasks 2–5 land independently, the Scope still needs to actually call the
 - Modify: `pkg/kubelet/cm/topologymanager/scope_container.go` (`accumulateProvidersHints` calls `provider.GetTopologyHints(ctx, pod, container)`)
 - Modify: `pkg/kubelet/cm/topologymanager/scope_pod.go` (`accumulateProvidersHints` calls `provider.GetPodTopologyHints(ctx, pod)`)
 
-- [ ] Verify every `provider.*` call in `pkg/kubelet/cm/topologymanager/scope*.go` passes `ctx`.
+- [ ] Verify every `provider.*` call in `pkg/kubelet/cm/topologymanager/scope*.go` passes `ctx` and **no** explicit logger argument.
 - [ ] Run `go build ./pkg/kubelet/cm/... && go test ./pkg/kubelet/cm/...`.
 
 ### Task 7: Thread `ctx` through Allocation Manager admission paths
 
-The 2025 allocation manager owns `AddPod`, `RemovePod`, `handlePodResourcesResize`, and `canAdmitPod`. Each currently creates `klog.TODO()` or accepts `logger klog.Logger`. Per the task description, replace logger-only signatures with `ctx` on the admission path.
+The 2025 allocation manager owns `AddPod`, `RemovePod`, `handlePodResourcesResize`, and `canAdmitPod`. Each currently creates `klog.TODO()` or accepts `logger klog.Logger`. Per the logger-replacement rule, **replace logger-only signatures with `ctx`** on the admission path — never pass both.
 
 **Files:**
 - Modify: `pkg/kubelet/allocation/allocation_manager.go`
   - `Manager` interface `AddPod(activePods []*v1.Pod, pod *v1.Pod) (bool, string, string)` → `AddPod(ctx context.Context, activePods []*v1.Pod, pod *v1.Pod)`
   - `manager.AddPod` impl: drop `klog.TODO()`, use `klog.FromContext(ctx)`
-  - `manager.RemovePod(uid types.UID)` — only currently has `klog.TODO()`; remains a non-admission call (no `ctx` plumbed from any current caller). Leave as is unless a caller already has `ctx`; if so, accept `ctx context.Context`. Check `kubelet.go` callers — if they have `ctx`, add it.
-  - `manager.handlePodResourcesResize(logger klog.Logger, pod *v1.Pod)` → `(ctx context.Context, pod *v1.Pod)`
-  - `manager.canAdmitPod(logger, allocatedPods, pod, op)` → `canAdmitPod(ctx, allocatedPods, pod, op)`; inside loop call `podAdmitHandler.Admit(ctx, attrs)`
-- Modify: `pkg/kubelet/allocation/handlers.go` — `podResizesAdmitHandler.Admit` is already updated in Task 1; either drop `h.logger` field and extract from `ctx`, or leave `h.logger` and ignore. Prefer dropping for cleanliness.
+  - `manager.RemovePod(uid types.UID)` → `RemovePod(ctx context.Context, uid types.UID)`; replace `klog.TODO()` with `klog.FromContext(ctx)` (see Question 3 below — recommended yes)
+  - `manager.handlePodResourcesResize(logger klog.Logger, pod *v1.Pod)` → `handlePodResourcesResize(ctx context.Context, pod *v1.Pod)` — **delete the `logger klog.Logger` parameter**; extract via `klog.FromContext(ctx)` inside
+  - `manager.canAdmitPod(logger, allocatedPods, pod, op)` → `canAdmitPod(ctx, allocatedPods, pod, op)` — **delete the `logger` parameter**; inside loop call `podAdmitHandler.Admit(ctx, attrs)`
+- Modify: `pkg/kubelet/allocation/handlers.go` — `podResizesAdmitHandler.Admit` is updated in Task 1: the `h.logger` field is dropped; `NewPodResizesAdmitHandler` loses its logger parameter. Confirm this is done.
 - Modify: `pkg/kubelet/kubelet.go:2882` — `kl.allocationManager.AddPod(kl.GetActivePods(), pod)` → `kl.allocationManager.AddPod(ctx, kl.GetActivePods(), pod)`
-- Modify: every caller of `handlePodResourcesResize` inside `allocation_manager.go` (the resize loop at line 247) — pass `ctx` from `Run(ctx context.Context)` (line 195, already ctx-aware)
-- Modify: `pkg/kubelet/allocation/*_test.go` — pass `ctx` from `ktesting.NewTestContext(t)`
+- Modify: every caller of `handlePodResourcesResize` inside `allocation_manager.go` (the resize loop at line 247) — pass `ctx` from `Run(ctx context.Context)` (line 195, already ctx-aware); do not pass a logger argument
+- Modify: every caller of `canAdmitPod` — pass `ctx` (not a logger)
+- Modify: every caller of `RemovePod` — pass `ctx`; for callers in non-admission flows that don't have a `ctx`, use `context.TODO()` with a `// TODO: plumb ctx` comment, but **do not pass a logger separately**
+- Modify: `pkg/kubelet/allocation/*_test.go` — pass `ctx` from `ktesting.NewTestContext(t)`; drop any logger argument
 
 - [ ] Update `Manager` interface `AddPod` signature; update impl to drop `klog.TODO()`.
-- [ ] Update `handlePodResourcesResize` signature; thread `ctx` from the resize-handling caller inside `Run`.
-- [ ] Update `canAdmitPod` signature; ensure it passes `ctx` to every `podAdmitHandler.Admit`.
-- [ ] In `handlers.go`, simplify `podResizesAdmitHandler` to use `klog.FromContext(ctx)` instead of a stored `h.logger`; update the `NewPodResizesAdmitHandler` constructor to drop the `logger klog.Logger` parameter.
-- [ ] Update `kubelet.go:1166` `NewPodResizesAdmitHandler(...)` call site to drop the logger argument.
+- [ ] Update `Manager` interface `RemovePod` signature to accept `ctx`; update impl to drop `klog.TODO()`; update kubelet callers.
+- [ ] Update `handlePodResourcesResize` signature — **drop the `logger` parameter, add `ctx`**; thread `ctx` from the resize-handling caller inside `Run`.
+- [ ] Update `canAdmitPod` signature — **drop the `logger` parameter, add `ctx`**; ensure it passes `ctx` to every `podAdmitHandler.Admit`.
+- [ ] In `handlers.go`, confirm `podResizesAdmitHandler` no longer stores `h.logger`; `NewPodResizesAdmitHandler` constructor signature lost its `logger klog.Logger` parameter (work begun in Task 1).
+- [ ] Update `kubelet.go:1166` `NewPodResizesAdmitHandler(...)` call site to drop the logger argument (work begun in Task 1; verify).
 - [ ] Update `kubelet.go:2882` to pass `ctx`.
-- [ ] Update all `pkg/kubelet/allocation/*_test.go` test callers.
+- [ ] Update all `pkg/kubelet/allocation/*_test.go` test callers — pass `ctx`, drop any logger argument.
 - [ ] Run `go build ./pkg/kubelet/... && go test ./pkg/kubelet/allocation/...`.
 
-### Task 8: Add `ctx` to TopologyManager `Scope.RemoveContainer` and `manager.AddHintProvider` if reachable from admission
+### Task 8: Audit remaining mixed `ctx` + `logger` signatures on the admission chain
+
+Final sweep specifically targeting the logger-replacement rule. Across all packages touched in Tasks 1–7, grep for any function on the admission → device-plugin chain that ends up with both a `ctx context.Context` parameter and a `klog.Logger` / `logr.Logger` parameter. If found, drop the logger and extract via `klog.FromContext(ctx)`.
+
+**Files:**
+- Inspect: every file modified in Tasks 1–7.
+
+- [ ] `grep -nE 'ctx context\.Context.*klog\.Logger|klog\.Logger.*ctx context\.Context|ctx context\.Context.*logr\.Logger|logr\.Logger.*ctx context\.Context' pkg/kubelet/lifecycle pkg/kubelet/eviction pkg/kubelet/sysctl pkg/kubelet/nodeshutdown pkg/kubelet/cm/topologymanager pkg/kubelet/cm/cpumanager pkg/kubelet/cm/memorymanager pkg/kubelet/cm/devicemanager pkg/kubelet/allocation`.
+- [ ] For each hit on the admission → device-plugin chain, drop the logger parameter, update every caller, extract via `klog.FromContext(ctx)` inside.
+- [ ] For each hit reachable **only** from non-admission paths (e.g. `Start`, `reconcileState`, `AddContainer`, `RemoveContainer`), document it in the PR description as out-of-scope. Do not change it.
+- [ ] Run `go build ./pkg/kubelet/... && go test ./pkg/kubelet/...`.
+
+### Task 9: Consider `ctx` on `Scope.RemoveContainer` and `Manager.AddHintProvider` (if reachable from admission)
 
 Smaller polish. `scope.RemoveContainer` (`pkg/kubelet/cm/topologymanager/scope.go:114`) currently does `ctx := context.TODO()`. This is reached from container teardown, **not** admission, so it falls outside the immediate scope of the task. **Defer this task** unless investigation in step 1 below shows otherwise.
 
@@ -203,24 +220,24 @@ Smaller polish. `scope.RemoveContainer` (`pkg/kubelet/cm/topologymanager/scope.g
 - Inspect: `pkg/kubelet/cm/topologymanager/topology_manager.go` `AddHintProvider`
 
 - [ ] Trace callers of `scope.RemoveContainer` and `Manager.RemoveContainer`. If every caller in the kubelet already has `ctx`, plumb it through and drop the `context.TODO()` here; otherwise leave alone (out of scope for this PR).
-- [ ] Trace callers of `Manager.AddHintProvider(_ klog.Logger, h HintProvider)` (currently ignores its logger). If callers already have `ctx`, change to `AddHintProvider(ctx, h)`; otherwise leave alone.
+- [ ] Trace callers of `Manager.AddHintProvider(_ klog.Logger, h HintProvider)` (currently ignores its logger). Per the rule "never pass both", and since the parameter is already ignored, **drop the `klog.Logger` parameter outright** rather than swapping it for `ctx` — the function has no logging to do. Update every wiring caller in `pkg/kubelet/cm/container_manager_linux.go` and similar files.
 - [ ] If any change is made, run `go build ./pkg/kubelet/cm/... && go test ./pkg/kubelet/cm/...`.
 
-### Task 9: Verify the admission → device-plugin chain end-to-end and run integration tests
+### Task 10: Verify the admission → device-plugin chain end-to-end and run integration tests
 
 Confirm that the `ctx` plumbed in at `Kubelet.HandlePodAdditions` (or `Kubelet.SyncPod` for resize) now reaches `endpoint.allocate(ctx, devs)` without any intervening `context.TODO()` / `context.Background()` on the hot path. Spot-check by tracing the call graph manually and grepping for stragglers.
 
 **Files:**
-- Inspect (no edits expected): everything touched in Tasks 1–7.
+- Inspect (no edits expected): everything touched in Tasks 1–8.
 
 - [ ] `grep -nE 'context\.(TODO|Background)\(\)' pkg/kubelet/cm/devicemanager/ pkg/kubelet/cm/topologymanager/ pkg/kubelet/cm/cpumanager/ pkg/kubelet/cm/memorymanager/ pkg/kubelet/lifecycle/ pkg/kubelet/eviction/ pkg/kubelet/sysctl/ pkg/kubelet/nodeshutdown/ pkg/kubelet/allocation/` — for each remaining hit, confirm it is **not** on the admission → device-plugin chain (e.g. it's in `Start`, reconcile loops, GC paths). Document each remaining occurrence in the PR description.
 - [ ] `grep -nE 'klog\.TODO\(\)' …` (same packages) — same audit.
-- [ ] Trace at least one path: `Kubelet.HandlePodAdditions` → `allocationManager.AddPod(ctx, …)` → `canAdmitPod(ctx, …)` → `predicateAdmitHandler.Admit(ctx, …)` → no longer happens via topology manager directly (predicate uses `pluginResourceUpdateFunc` for device manager resource update). Then trace `Kubelet.HandlePodAdditions` → `topologyManager.Admit(ctx, …)` (also called via `admitHandlers`) → `Scope.Admit(ctx, pod)` → `allocateAlignedResources(ctx, pod, container)` → `provider.Allocate(ctx, pod, container)` (DeviceManager) → `ManagerImpl.Allocate(ctx, pod, container)` → `allocateContainerResources(ctx, …)` → `endpoint.allocate(ctx, devs)`. Confirm every arrow has `ctx`.
+- [ ] Trace at least one path: `Kubelet.HandlePodAdditions` → `allocationManager.AddPod(ctx, …)` → `canAdmitPod(ctx, …)` → `predicateAdmitHandler.Admit(ctx, …)` → no longer happens via topology manager directly (predicate uses `pluginResourceUpdateFunc` for device manager resource update). Then trace `Kubelet.HandlePodAdditions` → `topologyManager.Admit(ctx, …)` (also called via `admitHandlers`) → `Scope.Admit(ctx, pod)` → `allocateAlignedResources(ctx, pod, container)` → `provider.Allocate(ctx, pod, container)` (DeviceManager) → `ManagerImpl.Allocate(ctx, pod, container)` → `allocateContainerResources(ctx, …)` → `endpoint.allocate(ctx, devs)`. Confirm every arrow has `ctx` and **no** explicit logger argument.
 - [ ] Run `go build ./...` from repo root.
 - [ ] Run `go test ./pkg/kubelet/...`.
 - [ ] Run `hack/verify-govet.sh` if it is fast on this tree (skip if slow); otherwise `go vet ./pkg/kubelet/...`.
 
-### Task 10: Update release notes and PR description
+### Task 11: Update release notes and PR description
 
 The original PR carried `release-note: NONE` because no user-facing behavior changes — the context plumbed in today carries no deadline/cancellation signal yet. Keep the same posture; the value of this PR is enabling a future PR (per the upstream discussion linked at #127717) to attach a deadline to admission.
 
@@ -228,22 +245,25 @@ The original PR carried `release-note: NONE` because no user-facing behavior cha
 - Modify: PR description (not a file in the tree).
 
 - [ ] Use `release-note: NONE`. Mention in the PR body that this is the follow-up to #128008, that it resolves the TODOs at `predicate.go:120`, `topology_manager.go:263`, and `devicemanager/manager.go:396`, and that it is a no-op at runtime because the propagated context currently carries no deadline.
+- [ ] Note in the PR body that the logger-replacement rule was applied: on every admission-chain function that gained a `ctx` in this PR, the prior `klog.Logger` / `logr.Logger` parameter was dropped (extracted via `klog.FromContext(ctx)` inside) — no function ends up with both.
 - [ ] Link to the future intent (PR #127717) for adding a deadline on the admission context.
 
 ## Questions
 
 1. **Scope of logger → ctx replacement.** The task description says "replace logger passed into the methods with the context instead of passing both whenever it will be needed." Some methods (`AddContainer`, `RemoveContainer`, `policyRemoveContainerByID`, `GetMemoryNUMANodes`, `markResourceUnhealthy`, `writeCheckpoint`, etc.) currently take `logger klog.Logger` and are reached from teardown / reconcile paths that do not currently have `ctx`. Two options:
-   - **Option A (recommended)**: Scope this PR strictly to the admission → device-plugin chain. Leave `AddContainer`/`RemoveContainer`/reconcile signatures with their `logger klog.Logger` parameters untouched. A separate PR can refactor the rest.
-   - **Option B**: Do everything in one PR — also plumb `ctx` through `AddContainer`, `RemoveContainer`, `Start`, `reconcileState`, `GetCapacity`, `UpdateAllocatedDevices`, etc. This roughly doubles the diff and is harder to review.
+   - **Option A (recommended)**: Scope this PR strictly to the admission → device-plugin chain. Leave `AddContainer`/`RemoveContainer`/reconcile signatures with their `logger klog.Logger` parameters untouched (they are not gaining a `ctx`, so the "don't pass both" rule does not apply to them in this PR). A separate PR can refactor the rest.
+   - **Option B**: Do everything in one PR — also plumb `ctx` through `AddContainer`, `RemoveContainer`, `Start`, `reconcileState`, `GetCapacity`, `UpdateAllocatedDevices`, etc., dropping each logger parameter as `ctx` is added. This roughly doubles the diff and is harder to review.
    - **Suggested: Option A** to keep the change reviewable and focused.
 
 2. **`predicate.go` `getNodeAnyWayFunc`.** `predicateAdmitHandler.Admit` calls `w.getNodeAnyWayFunc(ctx, true)`. The `getNodeAnyWayFuncType` already accepts a `ctx`, so plumbing the parameter ctx into it instead of `context.TODO()` is trivial. Confirm.
    - **Suggested: yes, replace `context.TODO()` at predicate.go:122 with the parameter `ctx`** — same as Task 1 already plans.
 
-3. **Should `Manager.RemovePod` in `allocation_manager.go` accept `ctx`?** Its callers (`kl.allocationManager.RemovePod(uid)`) are in pod-removal flows, some of which already have `ctx`. Adding `ctx` is cheap.
+3. **Should `Manager.RemovePod` in `allocation_manager.go` accept `ctx`?** Its callers (`kl.allocationManager.RemovePod(uid)`) are in pod-removal flows, some of which already have `ctx`. Adding `ctx` is cheap and lets us drop the `klog.TODO()` inside without introducing a logger-parameter alternative (which would violate the "no both" rule anyway).
    - **Option A**: Add `ctx` since some callers have it. **(recommended)**
    - **Option B**: Leave as-is; out of scope.
    - **Suggested: Option A** — RemovePod sees `ctx` callers in the sync loop, and replacing the `klog.TODO()` is a one-line win.
 
-4. **`TopologyManager.AddHintProvider(_ klog.Logger, h HintProvider)` already ignores its logger.** Should we drop the logger parameter entirely while we're touching neighboring code, or wait?
-   - **Suggested: leave it for a follow-up.** Removing an exported parameter ripples to every caller in the kubelet wiring code without delivering value for this PR.
+4. **`TopologyManager.AddHintProvider(_ klog.Logger, h HintProvider)` already ignores its logger.** Two options:
+   - **Option A (recommended)**: Drop the `klog.Logger` parameter entirely — the function does no logging, so neither `ctx` nor a logger is needed. This is consistent with the "don't carry vestigial parameters" spirit of the rule.
+   - **Option B**: Leave it for a follow-up.
+   - **Suggested: Option A** — it's a one-line change at the declaration plus a handful of caller updates in `container_manager_linux.go`, and it cleans up an obviously dead parameter. Captured in Task 9.
