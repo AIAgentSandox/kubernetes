@@ -909,12 +909,13 @@ func TestDeclaredFeaturesAdmitHandler(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
+			_, tCtx := ktesting.NewTestContext(t)
 			framework := ndf.New(tc.registeredFeatures)
 			fs := framework.MustMapSorted(tc.nodeDeclaredFeatures)
 			handler := NewDeclaredFeaturesAdmitHandler(framework, fs, tc.version)
 			attrs := &PodAdmitAttributes{Pod: pod}
 
-			result := handler.Admit(attrs)
+			result := handler.Admit(tCtx, attrs)
 
 			require.Equal(t, tc.expectedAdmit, result.Admit)
 			if !result.Admit {

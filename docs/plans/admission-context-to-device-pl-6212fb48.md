@@ -69,13 +69,13 @@ Promote `ctx` to a first-class parameter on the interface that gates all kubelet
 - Modify: `pkg/kubelet/allocation/allocation_manager.go` (`canAdmitPod` — pass `ctx` into `podAdmitHandler.Admit(ctx, attrs)`; see Task 7)
 - Modify: tests for every file above. Each test already calls `Admit(attrs)`; switch to `Admit(ctx, attrs)` using `_, ctx := ktesting.NewTestContext(t)` (the import is already used widely in these packages).
 
-- [ ] Update `PodAdmitHandler.Admit` interface signature in `pkg/kubelet/lifecycle/interfaces.go` to `Admit(ctx context.Context, attrs *PodAdmitAttributes) PodAdmitResult` and add `import "context"`.
-- [ ] Update every concrete implementation (8+ types listed above) to accept `ctx` and pass it through. In `predicate.go` replace `ctx := context.TODO()` at line 122 with the parameter — the existing `w.getNodeAnyWayFunc(ctx, true)` call already takes a ctx, so this is a parameter swap. In `topology_manager.go` `Admit` replace the inline `context.TODO()` and remove the TODO comment at lines 263–264.
-- [ ] In `pkg/kubelet/allocation/handlers.go`, drop the `logger klog.Logger` field on `podResizesAdmitHandler` and the `logger` parameter on `NewPodResizesAdmitHandler`. Inside `Admit`, extract `logger := klog.FromContext(ctx)` if logging is performed.
-- [ ] Update `kubelet.go` `NewPodResizesAdmitHandler(...)` call site (around `kubelet.go:1166`) to drop the logger argument.
-- [ ] Update `allocation.manager.canAdmitPod` to accept `ctx` (see Task 7) and pass it into every `podAdmitHandler.Admit(ctx, attrs)` call in the loop.
-- [ ] Update every test that calls `.Admit(attrs)` on a `PodAdmitHandler` to pass `ctx` from `ktesting.NewTestContext(t)`. Files include `eviction_manager_test.go`, `nodeshutdown_manager_linux_test.go`, `allowlist_test.go`, `fake_topology_manager_test.go`, `kubelet_test.go` (`testPodAdmitHandler.Admit`), and `allocation/*_test.go`.
-- [ ] Run `go build ./pkg/kubelet/... && go test ./pkg/kubelet/lifecycle/... ./pkg/kubelet/eviction/... ./pkg/kubelet/sysctl/... ./pkg/kubelet/nodeshutdown/... ./pkg/kubelet/cm/topologymanager/... ./pkg/kubelet/allocation/...`.
+- [x] Update `PodAdmitHandler.Admit` interface signature in `pkg/kubelet/lifecycle/interfaces.go` to `Admit(ctx context.Context, attrs *PodAdmitAttributes) PodAdmitResult` and add `import "context"`.
+- [x] Update every concrete implementation (8+ types listed above) to accept `ctx` and pass it through. In `predicate.go` replace `ctx := context.TODO()` at line 122 with the parameter — the existing `w.getNodeAnyWayFunc(ctx, true)` call already takes a ctx, so this is a parameter swap. In `topology_manager.go` `Admit` replace the inline `context.TODO()` and remove the TODO comment at lines 263–264.
+- [x] In `pkg/kubelet/allocation/handlers.go`, drop the `logger klog.Logger` field on `podResizesAdmitHandler` and the `logger` parameter on `NewPodResizesAdmitHandler`. Inside `Admit`, extract `logger := klog.FromContext(ctx)` if logging is performed.
+- [x] Update `kubelet.go` `NewPodResizesAdmitHandler(...)` call site (around `kubelet.go:1166`) to drop the logger argument.
+- [x] Update `allocation.manager.canAdmitPod` to accept `ctx` (see Task 7) and pass it into every `podAdmitHandler.Admit(ctx, attrs)` call in the loop.
+- [x] Update every test that calls `.Admit(attrs)` on a `PodAdmitHandler` to pass `ctx` from `ktesting.NewTestContext(t)`. Files include `eviction_manager_test.go`, `nodeshutdown_manager_linux_test.go`, `allowlist_test.go`, `fake_topology_manager_test.go`, `kubelet_test.go` (`testPodAdmitHandler.Admit`), and `allocation/*_test.go`.
+- [x] Run `go build ./pkg/kubelet/... && go test ./pkg/kubelet/lifecycle/... ./pkg/kubelet/eviction/... ./pkg/kubelet/sysctl/... ./pkg/kubelet/nodeshutdown/... ./pkg/kubelet/cm/topologymanager/... ./pkg/kubelet/allocation/...`.
 
 ### Task 2: Thread `ctx` through `topologymanager.HintProvider`
 

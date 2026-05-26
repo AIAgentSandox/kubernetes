@@ -543,6 +543,7 @@ func TestAdmit(t *testing.T) {
 			expected: false,
 		},
 	}
+	_, tCtx := ktesting.NewTestContext(t)
 	for _, tc := range tcases {
 		ctnScopeManager := manager{}
 		ctnScopeManager.scope = NewContainerScope(tc.policy)
@@ -570,7 +571,7 @@ func TestAdmit(t *testing.T) {
 		}
 
 		// Container scope Admit
-		ctnActual := ctnScopeManager.Admit(&podAttr)
+		ctnActual := ctnScopeManager.Admit(tCtx, &podAttr)
 		if ctnActual.Admit != tc.expected {
 			t.Errorf("Error occurred, expected Admit in result to be %v got %v", tc.expected, ctnActual.Admit)
 		}
@@ -579,7 +580,7 @@ func TestAdmit(t *testing.T) {
 		}
 
 		// Pod scope Admit
-		podActual := podScopeManager.Admit(&podAttr)
+		podActual := podScopeManager.Admit(tCtx, &podAttr)
 		if podActual.Admit != tc.expected {
 			t.Errorf("Error occurred, expected Admit in result to be %v got %v", tc.expected, podActual.Admit)
 		}
