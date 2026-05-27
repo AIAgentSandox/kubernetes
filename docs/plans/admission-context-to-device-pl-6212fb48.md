@@ -134,12 +134,12 @@ Mirror Task 3 for the memory manager. Eliminate `klog.TODO()` at `pkg/kubelet/cm
 - Modify: `pkg/kubelet/cm/memorymanager/policy_static_test.go`
 - Leave alone: `GetMemoryNUMANodes`, `RemoveContainer`, `AddContainer` (non-admission, keep `klog.Logger` param)
 
-- [ ] Update `Manager` interface and `manager.*` impls — admission methods take `ctx` only (no logger).
-- [ ] Update `Policy` interface (Allocate/AllocatePod/GetTopologyHints/GetPodTopologyHints): **`logger klog.Logger` → `ctx context.Context`** (replace, not append).
-- [ ] Update `policy_none.go`, `policy_static.go`, `policy_best_effort.go` impls — drop the logger parameter; extract via `klog.FromContext(ctx)` inside.
-- [ ] Update `fake_memory_manager.go`.
-- [ ] Update all tests (`memory_manager_test.go`, `policy_static_test.go`) to pass `ctx` and remove any logger argument.
-- [ ] Run `go build ./pkg/kubelet/cm/memorymanager/... && go test ./pkg/kubelet/cm/memorymanager/...`.
+- [x] Update `Manager` interface and `manager.*` impls — admission methods take `ctx` only (no logger).
+- [x] Update `Policy` interface (Allocate/AllocatePod/GetTopologyHints/GetPodTopologyHints): **`logger klog.Logger` → `ctx context.Context`** (replace, not append).
+- [x] Update `policy_none.go`, `policy_static.go`, `policy_best_effort.go` impls — drop the logger parameter; extract via `klog.FromContext(ctx)` inside.
+- [x] Update `fake_memory_manager.go`.
+- [x] Update all tests (`memory_manager_test.go`, `policy_static_test.go`) to pass `ctx` and remove any logger argument.
+- [x] Run `go build ./pkg/kubelet/cm/memorymanager/... && go test ./pkg/kubelet/cm/memorymanager/...`.
 
 ### Task 5: Thread `ctx` through Device Manager admission paths
 

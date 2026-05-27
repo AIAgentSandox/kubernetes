@@ -99,22 +99,22 @@ func (p *mockPolicy) Start(klog.Logger, state.State) error {
 	return p.err
 }
 
-func (p *mockPolicy) Allocate(klog.Logger, state.State, *v1.Pod, *v1.Container) error {
+func (p *mockPolicy) Allocate(context.Context, state.State, *v1.Pod, *v1.Container) error {
 	return p.err
 }
 
 func (p *mockPolicy) RemoveContainer(klog.Logger, state.State, string, string) {
 }
 
-func (p *mockPolicy) GetTopologyHints(klog.Logger, state.State, *v1.Pod, *v1.Container) map[string][]topologymanager.TopologyHint {
+func (p *mockPolicy) GetTopologyHints(context.Context, state.State, *v1.Pod, *v1.Container) map[string][]topologymanager.TopologyHint {
 	return nil
 }
 
-func (p *mockPolicy) GetPodTopologyHints(klog.Logger, state.State, *v1.Pod) map[string][]topologymanager.TopologyHint {
+func (p *mockPolicy) GetPodTopologyHints(context.Context, state.State, *v1.Pod) map[string][]topologymanager.TopologyHint {
 	return nil
 }
 
-func (p *mockPolicy) AllocatePod(logger klog.Logger, s state.State, pod *v1.Pod) error {
+func (p *mockPolicy) AllocatePod(ctx context.Context, s state.State, pod *v1.Pod) error {
 	return p.err
 }
 
