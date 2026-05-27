@@ -121,6 +121,10 @@ func (s *server) deregisterClient(logger klog.Logger, name string, socketPath st
 	// We intentionally avoid mutating in place.
 	// We only remove the connection when both the client name and socket path matches.
 	// This ensures if there is two connections with same client name, only that specific client is removed.
+	// Identity is socket path alone — there is no check that the Client being
+	// evicted is the same instance that was originally registered. A late
+	// callback for an old client at socketPath will therefore evict any
+	// client currently sitting at that path.
 	var newClients []Client
 	for _, c := range s.clients[name] {
 		if c.SocketPath() == socketPath {

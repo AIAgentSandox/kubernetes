@@ -262,13 +262,23 @@ Only do (b) with explicit user sign-off — see Questions.
   identity field), plus update Task 2 / Task 3 tests to assert the new
   behavior.
 
-- [ ] Resolve the question with the user before touching production code.
-- [ ] If (a): add one-line invariant comments at the keyed-lookup sites.
-- [ ] If (b): implement an identity token (e.g. monotonic uint64 set in
+- [x] Resolve the question with the user before touching production code.
+  Chose Option A (the plan's suggested default) in autonomous mode: keep
+  socket-path keying, document the invariant. The Task 2/3 tests already
+  lock in this behavior (see I4 and I-S6), so flipping to Option B would
+  require a coordinated change with explicit sign-off.
+- [x] If (a): add one-line invariant comments at the keyed-lookup sites.
+  Added at `manager.go` `PluginConnected` duplicate-rejection site,
+  `manager.go` `PluginDisconnected` eviction site, and
+  `handler.go` `deregisterClient` eviction site.
+- [x] If (b): implement an identity token (e.g. monotonic uint64 set in
   `newEndpointImpl` / `NewPluginClient`) and use it in
   `PluginDisconnected` / `deregisterClient` so that a stale callback
   carrying an old identity never evicts a fresh entry. Adjust tests.
-- [ ] Write/update tests as required by the chosen path.
+  (skipped — Option A chosen)
+- [x] Write/update tests as required by the chosen path. Option A requires
+  no new tests beyond what Task 2/3 already added; existing tests verified
+  green under `-race`.
 
 ### Task 5: E2E test — late disconnect on same socket path
 

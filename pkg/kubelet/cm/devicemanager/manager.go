@@ -244,6 +244,9 @@ func (m *ManagerImpl) PluginConnected(ctx context.Context, resourceName string, 
 	if m.endpointStore[resourceName] == nil {
 		m.endpointStore[resourceName] = make(map[string]*endpointInfo)
 	}
+	// Identity for an endpoint is (resourceName, socketPath); the socket path
+	// alone disambiguates plugin instances for the same resource. Reusing a
+	// socket path requires a prior PluginDisconnected for that same path.
 	if _, exists := m.endpointStore[resourceName][e.socketPath()]; exists {
 		return fmt.Errorf("device plugin already connected: %s", e.socketPath())
 	}
@@ -260,6 +263,10 @@ func (m *ManagerImpl) PluginDisconnected(logger klog.Logger, resourceName string
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
 
+	// Eviction is keyed on (resourceName, socketPath) alone; there is no
+	// per-endpoint identity token. A late callback for an old endpoint at
+	// socketPath will evict whichever endpoint currently sits at that path,
+	// even if it is a freshly-registered instance.
 	endpoints, ok := m.endpointStore[resourceName]
 	if !ok {
 		return
