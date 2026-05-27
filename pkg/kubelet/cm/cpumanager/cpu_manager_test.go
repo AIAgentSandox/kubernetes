@@ -141,7 +141,7 @@ func (p *mockPolicy) Start(_ logr.Logger, s state.State) error {
 	return p.err
 }
 
-func (p *mockPolicy) Allocate(_ logr.Logger, s state.State, pod *v1.Pod, container *v1.Container) error {
+func (p *mockPolicy) Allocate(_ context.Context, s state.State, pod *v1.Pod, container *v1.Container) error {
 	return p.err
 }
 
@@ -149,15 +149,15 @@ func (p *mockPolicy) RemoveContainer(_ logr.Logger, s state.State, podUID string
 	return p.err
 }
 
-func (p *mockPolicy) GetTopologyHints(_ logr.Logger, s state.State, pod *v1.Pod, container *v1.Container) map[string][]topologymanager.TopologyHint {
+func (p *mockPolicy) GetTopologyHints(_ context.Context, s state.State, pod *v1.Pod, container *v1.Container) map[string][]topologymanager.TopologyHint {
 	return nil
 }
 
-func (p *mockPolicy) GetPodTopologyHints(_ logr.Logger, s state.State, pod *v1.Pod) map[string][]topologymanager.TopologyHint {
+func (p *mockPolicy) GetPodTopologyHints(_ context.Context, s state.State, pod *v1.Pod) map[string][]topologymanager.TopologyHint {
 	return nil
 }
 
-func (p *mockPolicy) AllocatePod(_ logr.Logger, s state.State, pod *v1.Pod) error {
+func (p *mockPolicy) AllocatePod(_ context.Context, s state.State, pod *v1.Pod) error {
 	return p.err
 }
 

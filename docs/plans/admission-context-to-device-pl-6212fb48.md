@@ -113,13 +113,13 @@ Eliminate the `klog.TODO()` lines at `pkg/kubelet/cm/cpumanager/cpu_manager.go:2
 - Modify: `pkg/kubelet/cm/cpumanager/policy_none_test.go`, `policy_static_test.go`, `topology_hints_test.go` — pass `ctx`; drop logger argument
 - Leave alone (do not touch in this task): `AddContainer`, `RemoveContainer`, `policyRemoveContainer*`, `Start`, `reconcileState` — these are not on the admission path; they keep their existing `logger logr.Logger` / `ctx` signatures.
 
-- [ ] `cpu_manager.go` `Manager` interface: `Allocate(ctx, pod, container)`, `AllocatePod(ctx, pod)`, `GetTopologyHints(ctx, pod, container)`, `GetPodTopologyHints(ctx, pod)`. **No logger parameter on any of these.**
-- [ ] `cpu_manager.go` `manager.*` impls: drop `klog.TODO()`, use `klog.FromContext(ctx)`, pass `ctx` into `m.policy.*` calls (without a logger argument).
-- [ ] `policy.go` `Policy` interface: **replace `logger logr.Logger` with `ctx context.Context`** on `Allocate`, `AllocatePod`, `GetTopologyHints`, `GetPodTopologyHints` (keep `state.State`, `*v1.Pod`, `*v1.Container` arguments).
-- [ ] `policy_none.go`, `policy_static.go`: update impls — delete the `logger logr.Logger` parameter; extract logger via `klog.FromContext(ctx)` inside.
-- [ ] `fake_cpu_manager.go`: update fake signatures (no logger parameter on admission methods).
-- [ ] `cpu_manager_test.go`, `policy_none_test.go`, `policy_static_test.go`, `topology_hints_test.go`: use `_, ctx := ktesting.NewTestContext(t)` and pass `ctx` (drop any explicit logger argument).
-- [ ] Run `go build ./pkg/kubelet/cm/cpumanager/... && go test ./pkg/kubelet/cm/cpumanager/...`.
+- [x] `cpu_manager.go` `Manager` interface: `Allocate(ctx, pod, container)`, `AllocatePod(ctx, pod)`, `GetTopologyHints(ctx, pod, container)`, `GetPodTopologyHints(ctx, pod)`. **No logger parameter on any of these.**
+- [x] `cpu_manager.go` `manager.*` impls: drop `klog.TODO()`, use `klog.FromContext(ctx)`, pass `ctx` into `m.policy.*` calls (without a logger argument).
+- [x] `policy.go` `Policy` interface: **replace `logger logr.Logger` with `ctx context.Context`** on `Allocate`, `AllocatePod`, `GetTopologyHints`, `GetPodTopologyHints` (keep `state.State`, `*v1.Pod`, `*v1.Container` arguments).
+- [x] `policy_none.go`, `policy_static.go`: update impls — delete the `logger logr.Logger` parameter; extract logger via `klog.FromContext(ctx)` inside.
+- [x] `fake_cpu_manager.go`: update fake signatures (no logger parameter on admission methods).
+- [x] `cpu_manager_test.go`, `policy_none_test.go`, `policy_static_test.go`, `topology_hints_test.go`: use `_, ctx := ktesting.NewTestContext(t)` and pass `ctx` (drop any explicit logger argument).
+- [x] Run `go build ./pkg/kubelet/cm/cpumanager/... && go test ./pkg/kubelet/cm/cpumanager/...`.
 
 ### Task 4: Thread `ctx` through Memory Manager admission paths
 
