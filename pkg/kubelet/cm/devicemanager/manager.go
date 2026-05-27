@@ -393,7 +393,6 @@ func (m *ManagerImpl) Stop(logger klog.Logger) error {
 // Allocate is the call that you can use to allocate a set of devices
 // from the registered device plugins.
 func (m *ManagerImpl) Allocate(ctx context.Context, pod *v1.Pod, container *v1.Container) error {
-	_ = ctx // TODO(Task 5): use klog.FromContext(ctx) and drop any remaining klog.TODO() inside.
 	if _, ok := m.devicesToReuse[string(pod.UID)]; !ok {
 		m.devicesToReuse[string(pod.UID)] = make(map[string]sets.Set[string])
 	}
@@ -1150,8 +1149,8 @@ func (m *ManagerImpl) GetAllocatableDevices() ResourceDeviceInstances {
 }
 
 // AllocatePod is called to trigger the allocation of resources to a pod.
-func (m *ManagerImpl) AllocatePod(ctx context.Context, pod *v1.Pod) error {
-	_ = ctx // Device Manager does not support pod level resource allocation.
+func (m *ManagerImpl) AllocatePod(_ context.Context, _ *v1.Pod) error {
+	// Device Manager does not support pod level resource allocation.
 	return nil
 }
 

@@ -983,6 +983,7 @@ func TestGetPodTopologyHints(t *testing.T) {
 }
 
 func TestDeviceNUMANodes(t *testing.T) {
+	tCtx := ktesting.Init(t)
 	resource := "testdevice"
 	deviceOnNode := func(id string, node int) *pluginapi.Device {
 		return &pluginapi.Device{
@@ -1001,7 +1002,7 @@ func TestDeviceNUMANodes(t *testing.T) {
 			"b": deviceOnNode("b", 5),
 		}
 
-		nodes := m.deviceNUMANodes(resource)
+		nodes := m.deviceNUMANodes(tCtx, resource)
 		expected := []int{3, 5}
 		if !reflect.DeepEqual(nodes, expected) {
 			t.Fatalf("expected nodes %v, got %v", expected, nodes)
@@ -1018,7 +1019,7 @@ func TestDeviceNUMANodes(t *testing.T) {
 			"b": {ID: "b", Topology: nil},
 		}
 
-		nodes := m.deviceNUMANodes(resource)
+		nodes := m.deviceNUMANodes(tCtx, resource)
 		expected := []int{4}
 		if !reflect.DeepEqual(nodes, expected) {
 			t.Fatalf("expected nodes %v, got %v", expected, nodes)
@@ -1034,7 +1035,7 @@ func TestDeviceNUMANodes(t *testing.T) {
 			"b": {ID: "b", Topology: nil},
 		}
 
-		nodes := m.deviceNUMANodes(resource)
+		nodes := m.deviceNUMANodes(tCtx, resource)
 		if len(nodes) != 0 {
 			t.Fatalf("expected empty nodes, got %v", nodes)
 		}
@@ -1050,7 +1051,7 @@ func TestDeviceNUMANodes(t *testing.T) {
 			"b": deviceOnNode("b", 99),
 		}
 
-		nodes := m.deviceNUMANodes(resource)
+		nodes := m.deviceNUMANodes(tCtx, resource)
 		expected := []int{0}
 		if !reflect.DeepEqual(nodes, expected) {
 			t.Fatalf("expected nodes %v (node 99 should be dropped), got %v", expected, nodes)
@@ -1059,6 +1060,7 @@ func TestDeviceNUMANodes(t *testing.T) {
 }
 
 func TestGenerateDeviceTopologyHintsFiltersNUMANodes(t *testing.T) {
+	tCtx := ktesting.Init(t)
 	resource := "gpu"
 
 	t.Run("two node machine, device on one node", func(t *testing.T) {
@@ -1073,7 +1075,7 @@ func TestGenerateDeviceTopologyHintsFiltersNUMANodes(t *testing.T) {
 			},
 		}
 
-		hints := m.generateDeviceTopologyHints(resource, sets.New[string]("a"), nil, 1)
+		hints := m.generateDeviceTopologyHints(tCtx, resource, sets.New[string]("a"), nil, 1)
 
 		maskNode0, _ := bitmask.NewBitMask(0)
 		expected := []topologymanager.TopologyHint{
@@ -1106,7 +1108,7 @@ func TestGenerateDeviceTopologyHintsFiltersNUMANodes(t *testing.T) {
 			},
 		}
 
-		hints := m.generateDeviceTopologyHints(resource, sets.New[string]("gpu0", "gpu1"), nil, 1)
+		hints := m.generateDeviceTopologyHints(tCtx, resource, sets.New[string]("gpu0", "gpu1"), nil, 1)
 		sort.SliceStable(hints, func(i, j int) bool { return hints[i].LessThan(hints[j]) })
 
 		maskNode0, _ := bitmask.NewBitMask(0)
@@ -1140,7 +1142,7 @@ func TestGenerateDeviceTopologyHintsFiltersNUMANodes(t *testing.T) {
 			},
 		}
 
-		hints := m.generateDeviceTopologyHints(resource, sets.New[string]("a", "b"), nil, 1)
+		hints := m.generateDeviceTopologyHints(tCtx, resource, sets.New[string]("a", "b"), nil, 1)
 
 		fullMask, _ := bitmask.NewBitMask(0, 1)
 		fullMaskCount := 0
@@ -1166,7 +1168,7 @@ func TestGenerateDeviceTopologyHintsFiltersNUMANodes(t *testing.T) {
 			},
 		}
 
-		hints := m.generateDeviceTopologyHints(resource, nil, sets.New[string]("a"), 1)
+		hints := m.generateDeviceTopologyHints(tCtx, resource, nil, sets.New[string]("a"), 1)
 
 		expected := []topologymanager.TopologyHint{
 			{NUMANodeAffinity: makeSocketMask(0), Preferred: true},
@@ -1192,7 +1194,7 @@ func TestGenerateDeviceTopologyHintsFiltersNUMANodes(t *testing.T) {
 			},
 		}
 
-		hints := m.generateDeviceTopologyHints(resource, sets.New[string]("b"), sets.New[string]("a"), 2)
+		hints := m.generateDeviceTopologyHints(tCtx, resource, sets.New[string]("b"), sets.New[string]("a"), 2)
 
 		expected := []topologymanager.TopologyHint{
 			{NUMANodeAffinity: makeSocketMask(0, 1), Preferred: true},
@@ -1207,6 +1209,7 @@ func TestGenerateDeviceTopologyHintsFiltersNUMANodes(t *testing.T) {
 // the device hints produced by our changed code, without needing to wire up
 // real CPU/memory managers.
 func TestFilteredDeviceHintsMergeWithOtherProviders(t *testing.T) {
+	tCtx := ktesting.Init(t)
 	t.Run("device on node 0", func(t *testing.T) {
 		numaNodes := []int{0, 1}
 		numaInfo := &topologymanager.NUMAInfo{
@@ -1225,7 +1228,7 @@ func TestFilteredDeviceHintsMergeWithOtherProviders(t *testing.T) {
 			},
 		}
 
-		deviceHints := m.generateDeviceTopologyHints("gpu", sets.New[string]("gpu0"), nil, 1)
+		deviceHints := m.generateDeviceTopologyHints(tCtx, "gpu", sets.New[string]("gpu0"), nil, 1)
 
 		providersHints := []map[string][]topologymanager.TopologyHint{
 			{"gpu": deviceHints},
@@ -1260,7 +1263,7 @@ func TestFilteredDeviceHintsMergeWithOtherProviders(t *testing.T) {
 			},
 		}
 
-		deviceHints := m.generateDeviceTopologyHints("gpu", sets.New[string]("gpu0"), nil, 1)
+		deviceHints := m.generateDeviceTopologyHints(tCtx, "gpu", sets.New[string]("gpu0"), nil, 1)
 
 		providersHints := []map[string][]topologymanager.TopologyHint{
 			{"gpu": deviceHints},
@@ -1295,7 +1298,7 @@ func TestFilteredDeviceHintsMergeWithOtherProviders(t *testing.T) {
 			},
 		}
 
-		deviceHints := m.generateDeviceTopologyHints("gpu", sets.New[string]("gpu0"), nil, 1)
+		deviceHints := m.generateDeviceTopologyHints(tCtx, "gpu", sets.New[string]("gpu0"), nil, 1)
 
 		providersHints := []map[string][]topologymanager.TopologyHint{
 			{"gpu": deviceHints},

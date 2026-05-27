@@ -33,8 +33,7 @@ import (
 // ensures the Device Manager is consulted when Topology Aware Hints for each
 // container are created.
 func (m *ManagerImpl) GetTopologyHints(ctx context.Context, pod *v1.Pod, container *v1.Container) map[string][]topologymanager.TopologyHint {
-	_ = ctx // TODO(Task 5): replace klog.TODO() with klog.FromContext(ctx).
-	logger := klog.TODO()
+	logger := klog.FromContext(ctx)
 	// Garbage collect any stranded device resources before providing TopologyHints
 	m.UpdateAllocatedDevices()
 
@@ -63,7 +62,7 @@ func (m *ManagerImpl) GetTopologyHints(ctx context.Context, pod *v1.Pod, contain
 				continue
 			}
 			logger.Info("Regenerating TopologyHints for resource already allocated to pod", "resourceName", resource, "pod", klog.KObj(pod), "containerName", container.Name)
-			deviceHints[resource] = m.generateDeviceTopologyHints(resource, allocated, sets.Set[string]{}, requested)
+			deviceHints[resource] = m.generateDeviceTopologyHints(ctx, resource, allocated, sets.Set[string]{}, requested)
 			continue
 		}
 
@@ -78,7 +77,7 @@ func (m *ManagerImpl) GetTopologyHints(ctx context.Context, pod *v1.Pod, contain
 
 		// Generate TopologyHints for this resource given the current
 		// request size and the list of available devices.
-		deviceHints[resource] = m.generateDeviceTopologyHints(resource, available, reusable, requested)
+		deviceHints[resource] = m.generateDeviceTopologyHints(ctx, resource, available, reusable, requested)
 	}
 
 	return deviceHints
@@ -87,8 +86,7 @@ func (m *ManagerImpl) GetTopologyHints(ctx context.Context, pod *v1.Pod, contain
 // GetPodTopologyHints implements the topologymanager.HintProvider Interface which
 // ensures the Device Manager is consulted when Topology Aware Hints for Pod are created.
 func (m *ManagerImpl) GetPodTopologyHints(ctx context.Context, pod *v1.Pod) map[string][]topologymanager.TopologyHint {
-	_ = ctx // TODO(Task 5): replace klog.TODO() with klog.FromContext(ctx).
-	logger := klog.TODO()
+	logger := klog.FromContext(ctx)
 	// Garbage collect any stranded device resources before providing TopologyHints
 	m.UpdateAllocatedDevices()
 
@@ -116,7 +114,7 @@ func (m *ManagerImpl) GetPodTopologyHints(ctx context.Context, pod *v1.Pod) map[
 				continue
 			}
 			logger.Info("Regenerating TopologyHints for resource already allocated to pod", "resourceName", resource, "pod", klog.KObj(pod), "allocated", allocated.Len())
-			deviceHints[resource] = m.generateDeviceTopologyHints(resource, allocated, sets.Set[string]{}, requested)
+			deviceHints[resource] = m.generateDeviceTopologyHints(ctx, resource, allocated, sets.Set[string]{}, requested)
 			continue
 		}
 
@@ -130,7 +128,7 @@ func (m *ManagerImpl) GetPodTopologyHints(ctx context.Context, pod *v1.Pod) map[
 
 		// Generate TopologyHints for this resource given the current
 		// request size and the list of available devices.
-		deviceHints[resource] = m.generateDeviceTopologyHints(resource, available, sets.Set[string]{}, requested)
+		deviceHints[resource] = m.generateDeviceTopologyHints(ctx, resource, available, sets.Set[string]{}, requested)
 	}
 
 	return deviceHints
@@ -151,7 +149,7 @@ func (m *ManagerImpl) getAvailableDevices(resource string) sets.Set[string] {
 	return m.healthyDevices[resource].Difference(m.allocatedDevices[resource])
 }
 
-func (m *ManagerImpl) generateDeviceTopologyHints(resource string, available sets.Set[string], reusable sets.Set[string], request int) []topologymanager.TopologyHint {
+func (m *ManagerImpl) generateDeviceTopologyHints(ctx context.Context, resource string, available sets.Set[string], reusable sets.Set[string], request int) []topologymanager.TopologyHint {
 	// Narrow the bitmask iteration to NUMA nodes that actually host
 	// devices for this resource.  On platforms where the OS exposes many
 	// NUMA nodes that carry no devices (e.g. NVIDIA GB200 with 36 NUMA
@@ -161,7 +159,7 @@ func (m *ManagerImpl) generateDeviceTopologyHints(resource string, available set
 	// Because device-less nodes never contribute to devicesInMask,
 	// excluding them does not change minAffinitySize or Preferred
 	// flag computation.
-	numaNodes := m.deviceNUMANodes(resource)
+	numaNodes := m.deviceNUMANodes(ctx, resource)
 	if len(numaNodes) == 0 {
 		numaNodes = m.numaNodes
 	}
@@ -238,7 +236,7 @@ func (m *ManagerImpl) generateDeviceTopologyHints(resource string, available set
 // subset of m.numaNodes: any NUMA IDs reported by device plugins that are not
 // known to cadvisor are logged and dropped.
 // The caller must hold m.mutex.
-func (m *ManagerImpl) deviceNUMANodes(resource string) []int {
+func (m *ManagerImpl) deviceNUMANodes(ctx context.Context, resource string) []int {
 	nodesWithDevices := sets.New[int]()
 	for _, device := range m.allDevices[resource] {
 		nodesWithDevices.Insert(m.getNUMANodeIds(device.Topology)...)
@@ -247,7 +245,7 @@ func (m *ManagerImpl) deviceNUMANodes(resource string) []int {
 	knownNodes := sets.New[int](m.numaNodes...)
 	unknown := nodesWithDevices.Difference(knownNodes)
 	if unknown.Len() > 0 {
-		klog.TODO().Info("Ignoring NUMA node IDs reported by device plugin that are unknown to cadvisor",
+		klog.FromContext(ctx).Info("Ignoring NUMA node IDs reported by device plugin that are unknown to cadvisor",
 			"resource", resource, "unknownNodes", sets.List(unknown), "knownNodes", m.numaNodes)
 		nodesWithDevices = nodesWithDevices.Intersection(knownNodes)
 	}

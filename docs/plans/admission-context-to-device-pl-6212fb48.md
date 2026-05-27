@@ -154,13 +154,13 @@ Eliminate the `ctx := context.TODO()` at `pkg/kubelet/cm/devicemanager/manager.g
 - Modify: `pkg/kubelet/cm/devicemanager/topology_hints_test.go` — pass `ctx`
 - Modify: `pkg/kubelet/cm/devicemanager/endpoint_test.go` — already uses ctx (no change needed, just verify)
 
-- [ ] `types.go`: update `Manager` interface signatures.
-- [ ] `manager.go`: update `Allocate` (drop the `// Use context.TODO()` comment block at lines 396–398), `AllocatePod`, `GetTopologyHints`, `GetPodTopologyHints`. Each becomes `func (m *ManagerImpl) Allocate(ctx context.Context, …) error { logger := klog.FromContext(ctx); … }`.
-- [ ] `topology_hints.go`: drop `klog.TODO()` in `GetTopologyHints` and `GetPodTopologyHints`; use `klog.FromContext(ctx)`.
-- [ ] In `GetDeviceRunContainerOptions`, the inner `m.Allocate(pod, container)` re-allocation call must now pass `ctx`.
-- [ ] Update `MockEndpoint` and all test call sites in `manager_test.go`, `topology_hints_test.go`.
-- [ ] Verify nothing else creates a `context.TODO()` inside `pkg/kubelet/cm/devicemanager/`; if any remain on the admission path, replace them with the parameter. (Acceptable remainders: `Stop`, `UpdateAllocatedDevices`, `GetCapacity` — these are not on the admission path; leave their `klog.TODO()` / `logger klog.TODO()` alone for this PR.)
-- [ ] Run `go build ./pkg/kubelet/cm/devicemanager/... && go test ./pkg/kubelet/cm/devicemanager/...`.
+- [x] `types.go`: update `Manager` interface signatures.
+- [x] `manager.go`: update `Allocate` (drop the `// Use context.TODO()` comment block at lines 396–398), `AllocatePod`, `GetTopologyHints`, `GetPodTopologyHints`. Each becomes `func (m *ManagerImpl) Allocate(ctx context.Context, …) error { logger := klog.FromContext(ctx); … }`.
+- [x] `topology_hints.go`: drop `klog.TODO()` in `GetTopologyHints` and `GetPodTopologyHints`; use `klog.FromContext(ctx)`.
+- [x] In `GetDeviceRunContainerOptions`, the inner `m.Allocate(pod, container)` re-allocation call must now pass `ctx`.
+- [x] Update `MockEndpoint` and all test call sites in `manager_test.go`, `topology_hints_test.go`.
+- [x] Verify nothing else creates a `context.TODO()` inside `pkg/kubelet/cm/devicemanager/`; if any remain on the admission path, replace them with the parameter. (Acceptable remainders: `Stop`, `UpdateAllocatedDevices`, `GetCapacity` — these are not on the admission path; leave their `klog.TODO()` / `logger klog.TODO()` alone for this PR.)
+- [x] Run `go build ./pkg/kubelet/cm/devicemanager/... && go test ./pkg/kubelet/cm/devicemanager/...`.
 
 ### Task 6: Wire `ctx` from TopologyManager `Scope.Admit` into HintProvider callers
 
