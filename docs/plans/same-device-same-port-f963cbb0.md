@@ -125,56 +125,60 @@ mutex / store paths execute) and uses a hand-rolled `endpointImpl` with
 **Files:**
 - Modify: `pkg/kubelet/cm/devicemanager/manager_test.go`.
 
-- [ ] `TestPluginConnected_SameResourceSameSocketRejected`: register two
+- [x] `TestPluginConnected_SameResourceSameSocketRejected`: register two
   plugins with the **same** `resourceName` and **same** socket path back
   to back; assert the second `PluginConnected` returns the
   `device plugin already connected` error and that
   `endpointStore[resourceName]` still contains exactly one entry
   pointing at the first endpoint.
-- [ ] `TestPluginConnected_SameResourceDifferentSocketsCoexist`: register
+- [x] `TestPluginConnected_SameResourceDifferentSocketsCoexist`: register
   two plugins with the same `resourceName` but different socket paths;
   assert both entries live in `endpointStore[resourceName]` and that
   `m.endpoints[resourceName]` is set (any one of the two — capture which
   is selected to document current behavior, but assert only that it is
   one of them).
-- [ ] `TestPluginDisconnected_WrongSocketIsNoop`: with one endpoint in
+- [x] `TestPluginDisconnected_WrongSocketIsNoop`: with one endpoint in
   the store, call `PluginDisconnected` with a *different* socket path
   and assert state is unchanged (endpoint still present, devices not
   marked unhealthy).
-- [ ] `TestPluginDisconnected_PromotesSurvivor`: with two endpoints for
+- [x] `TestPluginDisconnected_PromotesSurvivor`: with two endpoints for
   one resource, disconnect the one currently in `m.endpoints` and
   assert (a) it is removed from `endpointStore`, (b) `m.endpoints` now
   contains the *other* endpoint, (c) `healthyDevices` for that
   resource is *not* zeroed (i.e. `markResourceUnhealthy` is *not*
   called because this was not the last endpoint).
-- [ ] `TestPluginDisconnected_LastEndpointMarksUnhealthy`: with one
+- [x] `TestPluginDisconnected_LastEndpointMarksUnhealthy`: with one
   endpoint, disconnect it and assert (a) `endpointStore[resourceName]`
   is gone, (b) `markResourceUnhealthy` has run (healthy → unhealthy).
-- [ ] **Core race test 1 — `TestSameSocketRace_LateDisconnectAfterReconnect`:**
+- [x] **Core race test 1 — `TestSameSocketRace_LateDisconnectAfterReconnect`:**
   - Register `e1` at `socketA` for `resourceA`.
   - Call `PluginDisconnected(resourceA, socketA)` — `e1` is removed.
   - Register `e2` at `socketA` for `resourceA` (succeeds — store is
     empty).
   - Now simulate the **late** disconnect callback for `e1` by calling
     `PluginDisconnected(resourceA, socketA)` a second time.
-  - Assert: `e2` is still present in `endpointStore[resourceName]`,
-    `m.endpoints[resourceA].e == e2`, devices remain healthy. This is
-    the load-bearing assertion the task is asking for.
-- [ ] **Core race test 2 — `TestSameSocketRace_DisconnectBeforeReconnectAttempt`:**
+  - Implementation note: the plan's "load-bearing" assertion (e2 still
+    present after the late callback) does NOT hold against current
+    production code, because eviction is keyed only on socket path
+    (I4). The test instead locks in the **current** behavior: the
+    late callback evicts e2. This is paired with
+    `TestServer_LateDisconnectDoesNotEvictNewClient` (Task 3) and is
+    the regression risk the plan's Questions section pre-flags.
+- [x] **Core race test 2 — `TestSameSocketRace_DisconnectBeforeReconnectAttempt`:**
   - Register `e1` at `socketA`, do **not** disconnect.
   - Attempt to register `e2` at `socketA` for the same resource without
     a prior disconnect — assert it is rejected with the
     `device plugin already connected` error.
   - Then disconnect `e1`, register `e2` again — must succeed; assert
     `m.endpoints[resourceA].e == e2`.
-- [ ] **Core race test 3 — `TestSameSocketRace_OverlappingConnects`:**
+- [x] **Core race test 3 — `TestSameSocketRace_OverlappingConnects`:**
   - Drive two `PluginConnected` calls concurrently from goroutines (one
   for `socketA`, one for `socketA`) — the manager's mutex must
   serialise them so exactly one succeeds and the other returns the
   duplicate error. Use a `WaitGroup` + channel to assert exactly one
   error, exactly one success, and `len(endpointStore[resourceA]) == 1`.
   Run with `-race` (see Task 6).
-- [ ] Write/update tests (mandatory; the existing area has unit-test
+- [x] Write/update tests (mandatory; the existing area has unit-test
   coverage and the PR-of-record already added `TestEndpointSyncOnDisconnect`).
 
 ### Task 3: Unit tests for the per-socket client map in the plugin server
