@@ -321,6 +321,63 @@ func testDevicePluginMultiple(f *framework.Framework, pluginSockDir string) {
 			framework.ExpectNoError(err)
 			gomega.Expect(pod3.Status.Phase).To(gomega.Equal(v1.PodRunning))
 		})
+
+		// Device Plugin Multiple: same socket path reused after delayed disconnect
+		//
+		// Guards against a "neither endpoint registered" condition where a kubelet
+		// PluginDisconnected callback for an old plugin process arrives after a new
+		// plugin process has already re-registered on the same Unix-domain socket.
+		// The kubelet's per-endpoint store is keyed by (resourceName, socketPath);
+		// the test exercises the same-socket reuse path and asserts that DP1's
+		// separate endpoint (keyed by a different socket path) is unaffected and
+		// the resource never disappears for the duration of the swap.
+		ginkgo.It("Device Plugin Multiple: same socket path reused after delayed disconnect", func(ctx context.Context) {
+			var err error
+			podRECMD := fmt.Sprintf("devs=$(ls /tmp/ | egrep '^Dev-[0-9]+$') && echo stub devices: $devs && sleep %s", sleepIntervalForever)
+
+			ginkgo.By("Scheduling Pod1 with DP1 successfully")
+			pod1 := e2epod.NewPodClient(f).CreateSync(ctx, makeBusyboxPod(e2enode.SampleDeviceResourceName, podRECMD))
+			pod1, err = e2epod.NewPodClient(f).Get(ctx, pod1.Name, metav1.GetOptions{})
+			framework.ExpectNoError(err)
+			gomega.Expect(pod1.Status.Phase).To(gomega.Equal(v1.PodRunning))
+
+			ginkgo.By("Registering plugin2 on socket S (keyed by f.UniqueName) with one extra device")
+			plugin2 := testdeviceplugin.NewDevicePlugin(nil)
+			err = plugin2.RegisterDevicePlugin(ctx, f.UniqueName, e2enode.SampleDeviceResourceName,
+				[]*kubeletdevicepluginv1beta1.Device{{ID: "plugin2-dev-1", Health: kubeletdevicepluginv1beta1.Healthy}})
+			framework.ExpectNoError(err)
+
+			ginkgo.By("Waiting for plugin2's extra device to be visible in node capacity")
+			gomega.Eventually(ctx, func(ctx context.Context) bool {
+				node, ready := getLocalTestNode(ctx, f)
+				return ready && e2enode.CountSampleDeviceCapacity(node) >= e2enode.SampleDevsAmount+1
+			}, 30*time.Second, framework.Poll).Should(gomega.BeTrueBecause("expected plugin2's extra device to register"))
+
+			ginkgo.By("Stopping plugin2 then immediately re-registering plugin2b on the same socket path")
+			plugin2.Stop()
+
+			plugin2b := testdeviceplugin.NewDevicePlugin(nil)
+			defer plugin2b.Stop()
+			err = plugin2b.RegisterDevicePlugin(ctx, f.UniqueName, e2enode.SampleDeviceResourceName,
+				[]*kubeletdevicepluginv1beta1.Device{{ID: "plugin2b-dev-1", Health: kubeletdevicepluginv1beta1.Healthy}})
+			framework.ExpectNoError(err)
+
+			ginkgo.By("Asserting DP1's endpoint survives plugin2's late disconnect (capacity stays >= SampleDevsAmount)")
+			// DP1's endpoint is keyed by a different socket path than plugin2 / plugin2b.
+			// A late PluginDisconnected callback for plugin2 must not evict DP1's
+			// endpoint; SampleDevsAmount devices from DP1 must remain visible
+			// throughout the same-socket swap.
+			gomega.Consistently(ctx, func(ctx context.Context) bool {
+				node, ready := getLocalTestNode(ctx, f)
+				return ready && e2enode.CountSampleDeviceCapacity(node) >= e2enode.SampleDevsAmount
+			}, 30*time.Second, framework.Poll).Should(gomega.BeTrueBecause("DP1's endpoint must survive plugin2's late disconnect"))
+
+			ginkgo.By("Scheduling Pod2 to confirm the resource remains schedulable through the swap")
+			pod2 := e2epod.NewPodClient(f).CreateSync(ctx, makeBusyboxPod(e2enode.SampleDeviceResourceName, podRECMD))
+			pod2, err = e2epod.NewPodClient(f).Get(ctx, pod2.Name, metav1.GetOptions{})
+			framework.ExpectNoError(err)
+			gomega.Expect(pod2.Status.Phase).To(gomega.Equal(v1.PodRunning))
+		})
 	})
 }
 

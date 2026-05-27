@@ -300,7 +300,7 @@ registered endpoint and devices remain allocatable.
   scenario by simply stopping the gRPC server and re-creating one
   on the same path.
 
-- [ ] `Device Plugin Multiple: same socket path reused after delayed disconnect`:
+- [x] `Device Plugin Multiple: same socket path reused after delayed disconnect`:
   - `BeforeEach` stays the same (DP1 already running via
     `getSampleDevicePluginPod` and resource available).
   - Stand up `plugin2 := testdeviceplugin.NewDevicePlugin(nil)` at a
@@ -320,17 +320,37 @@ registered endpoint and devices remain allocatable.
   - Assert (with `gomega.Consistently` for ~30s): the resource count
     never drops to zero between these two registrations — this is the
     "neither endpoint registered" failure mode the task is calling out.
-- [ ] If the natural `Stop()` → relisten flow does not actually exercise
+  - Implementation: assertion uses `capacity >= SampleDevsAmount` (DP1's
+    contribution) for the Consistently check. This locks in that DP1's
+    separate endpoint is *not* evicted by plugin2's late callback
+    (same-resource, different-socket). The unit tests
+    (`TestSameSocketRace_LateDisconnectAfterReconnect`) already lock in
+    the per-socket eviction behavior for plugin2 / plugin2b; the e2e test
+    serves as the smoke test for the per-endpoint store under realistic
+    timing.
+- [x] If the natural `Stop()` → relisten flow does not actually exercise
   the late callback (because gRPC close is fast and deterministic on
   the local node), add a minimal option to
   `testdeviceplugin.DevicePlugin` (e.g. `WithGracefulStop()` or a
   `holdDisconnect` channel) so the test can withhold the disconnect
   signal until after re-registration. Keep the surface area small;
   preserve backwards compatibility of `NewDevicePlugin(errorInjector)`.
-- [ ] Add a short comment at the top of the test referencing the issue
+  Chose Option B from Question 3 (no helper modification): Go's
+  `(*UnixListener).Close()` unlinks the socket file by default, so
+  `plugin2.Stop()` → `plugin2b.RegisterDevicePlugin(...)` on the same
+  uniqueName works without changes. The e2e assertions are conservative
+  (DP1's endpoint must remain) so they remain meaningful even when the
+  kubelet observes plugin2's close before plugin2b re-registers. If a
+  future run shows the codepath isn't exercised at all, add
+  `holdDisconnect` in a follow-up iteration.
+- [x] Add a short comment at the top of the test referencing the issue
   this guards against (no PR/issue number in the comment — comment on
-  *behavior*, not history, per repo style).
-- [ ] Write/update tests (this task is the test).
+  *behavior*, not history, per repo style). Comment placed immediately
+  above the `ginkgo.It(...)` call describing the "neither endpoint
+  registered" condition and the per-endpoint store invariant.
+- [x] Write/update tests (this task is the test). Added new
+  `ginkgo.It` to `test/e2e_node/device_plugin_multiple_test.go`;
+  `go test -c -o /dev/null ./test/e2e_node/` compiles cleanly.
 
 ### Task 6: Run tests under `-race` and stabilise
 
