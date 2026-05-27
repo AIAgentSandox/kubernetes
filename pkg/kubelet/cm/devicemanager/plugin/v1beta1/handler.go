@@ -87,7 +87,12 @@ func (s *server) connectClient(ctx context.Context, name string, socketPath stri
 
 	s.registerClient(logger, name, c)
 	if err := c.Connect(ctx); err != nil {
-		// Need to re-connect the client if connection fails
+		// Connect can fail either because the dial failed or because
+		// PluginConnected rejected the registration (e.g. "device plugin
+		// already connected"). In the fast-takeover race, repeated retries
+		// here will not recover — the existing endpoint's ListAndWatch
+		// stream must break first. See PluginConnected in the manager for
+		// details on recovery.
 		s.deregisterClient(logger, name, socketPath)
 		logger.Error(err, "Failed to connect to new client", "resource", name, "socketPath", socketPath)
 		return err
@@ -125,6 +130,15 @@ func (s *server) deregisterClient(logger klog.Logger, name string, socketPath st
 	// evicted is the same instance that was originally registered. A late
 	// callback for an old client at socketPath will therefore evict any
 	// client currently sitting at that path.
+	//
+	// Protection against the fast-takeover race (where plugin1's dial
+	// connects to plugin2's server on the same socket) comes from
+	// PluginConnected in the manager: it rejects duplicate
+	// (resourceName, socketPath) registrations, so only one endpoint can
+	// be registered per socket at a time. If plugin1 connected to
+	// plugin2's server, plugin2's own PluginConnected call would be
+	// rejected, surfacing the conflict rather than silently evicting
+	// plugin1's registration on a late disconnect.
 	var newClients []Client
 	for _, c := range s.clients[name] {
 		if c.SocketPath() == socketPath {

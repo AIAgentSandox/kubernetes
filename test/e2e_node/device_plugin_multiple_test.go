@@ -365,15 +365,23 @@ func testDevicePluginMultiple(f *framework.Framework, pluginSockDir string) {
 				[]*kubeletdevicepluginv1beta1.Device{{ID: "plugin2b-dev-1", Health: kubeletdevicepluginv1beta1.Healthy}})
 			framework.ExpectNoError(err)
 
-			ginkgo.By("Asserting DP1's endpoint survives plugin2's late disconnect (capacity stays >= SampleDevsAmount)")
-			// DP1's endpoint is keyed by a different socket path than plugin2 / plugin2b.
-			// A late PluginDisconnected callback for plugin2 must not evict DP1's
-			// endpoint; SampleDevsAmount devices from DP1 must remain visible
-			// throughout the same-socket swap.
+			ginkgo.By("Asserting DP1's endpoint survives the same-socket swap (capacity stays >= SampleDevsAmount)")
+			// DP1 runs on its own socket (from BeforeEach); plugin2 and plugin2b
+			// share a different socket (f.UniqueName). The Consistently check
+			// verifies DP1's devices remain visible throughout the swap, and the
+			// subsequent Eventually verifies plugin2b's device appears — proving
+			// the late PluginDisconnected callback from plugin2 did not evict
+			// plugin2b's registration at the same socket path.
 			gomega.Consistently(ctx, func(ctx context.Context) bool {
 				node, ready := getLocalTestNode(ctx, f)
 				return ready && e2enode.CountSampleDeviceCapacity(node) >= e2enode.SampleDevsAmount
 			}, 30*time.Second, framework.Poll).Should(gomega.BeTrueBecause("DP1's endpoint must survive plugin2's late disconnect"))
+
+			ginkgo.By("Asserting plugin2b's device becomes visible after the same-socket swap")
+			gomega.Eventually(ctx, func(ctx context.Context) bool {
+				node, ready := getLocalTestNode(ctx, f)
+				return ready && e2enode.CountSampleDeviceCapacity(node) >= e2enode.SampleDevsAmount+1
+			}, 30*time.Second, framework.Poll).Should(gomega.BeTrueBecause("plugin2b's device must register after same-socket swap"))
 
 			ginkgo.By("Scheduling Pod2 to confirm the resource remains schedulable through the swap")
 			pod2 := e2epod.NewPodClient(f).CreateSync(ctx, makeBusyboxPod(e2enode.SampleDeviceResourceName, podRECMD))

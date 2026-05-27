@@ -247,6 +247,20 @@ func (m *ManagerImpl) PluginConnected(ctx context.Context, resourceName string, 
 	// Identity for an endpoint is (resourceName, socketPath); the socket path
 	// alone disambiguates plugin instances for the same resource. Reusing a
 	// socket path requires a prior PluginDisconnected for that same path.
+	// In practice, the old endpoint must disconnect from ListAndWatch (e.g.
+	// because its process exited) for the kubelet to detect it is gone and
+	// fire the PluginDisconnected callback that clears this entry. The new
+	// plugin must re-register after the old one is gone; plugins are
+	// expected to retry registration on failure.
+	//
+	// WARNING: In the fast-takeover race (plugin2 takes over the socket before
+	// plugin1 dials), plugin1 ends up connected to plugin2's gRPC server and
+	// holds this slot. Plugin2's registration is then rejected here. Because
+	// plugin1's ListAndWatch stream is served by plugin2's live server, it
+	// never breaks, so PluginDisconnected is never called and the slot is
+	// never cleared. Plugin2 cannot recover by simply retrying registration —
+	// it must restart its gRPC server to sever plugin1's stream, which will
+	// trigger the disconnect and free the slot for re-registration.
 	if _, exists := m.endpointStore[resourceName][e.socketPath()]; exists {
 		return fmt.Errorf("device plugin already connected: %s", e.socketPath())
 	}
@@ -266,7 +280,12 @@ func (m *ManagerImpl) PluginDisconnected(logger klog.Logger, resourceName string
 	// Eviction is keyed on (resourceName, socketPath) alone; there is no
 	// per-endpoint identity token. A late callback for an old endpoint at
 	// socketPath will evict whichever endpoint currently sits at that path,
-	// even if it is a freshly-registered instance.
+	// even if it is a freshly-registered instance. We avoid unregistering
+	// the wrong client by not allowing two endpoints with the same socket
+	// in PluginConnected — a new endpoint cannot silently replace an
+	// existing one, so the old endpoint must disconnect first. This
+	// prevents a late PluginDisconnected callback from deleting a
+	// registration that belongs to a different plugin instance.
 	endpoints, ok := m.endpointStore[resourceName]
 	if !ok {
 		return

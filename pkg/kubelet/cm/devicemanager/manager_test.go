@@ -2256,11 +2256,19 @@ func TestEndpointSyncOnDisconnect(t *testing.T) {
 // is intentional, a signal that the test needs updating.
 type fakeDevicePluginAPI struct {
 	pluginapi.DevicePluginClient
-	opts *pluginapi.DevicePluginOptions
+	opts           *pluginapi.DevicePluginOptions
+	allocateCalled int
 }
 
 func (f *fakeDevicePluginAPI) GetDevicePluginOptions(_ context.Context, _ *pluginapi.Empty, _ ...grpc.CallOption) (*pluginapi.DevicePluginOptions, error) {
 	return f.opts, nil
+}
+
+func (f *fakeDevicePluginAPI) Allocate(_ context.Context, _ *pluginapi.AllocateRequest, _ ...grpc.CallOption) (*pluginapi.AllocateResponse, error) {
+	f.allocateCalled++
+	return &pluginapi.AllocateResponse{
+		ContainerResponses: []*pluginapi.ContainerAllocateResponse{{}},
+	}, nil
 }
 
 // fakeDevicePlugin is a minimal plugin.DevicePlugin that the manager treats
@@ -2577,6 +2585,73 @@ func TestSameSocketRace_DisconnectBeforeReconnectAttempt(t *testing.T) {
 	require.True(t, ok)
 	require.Same(t, p2.api, primary.api,
 		"the fresh p2 endpoint must be installed as the primary after a clean reconnect")
+}
+
+// TestSameSocketRace_FastTakeoverMayResultInInfiniteRetries emulates a fast
+// socket takeover: plugin1 triggers registration, but by the time its
+// Connect() dials the socket, plugin2 is already listening there. Plugin1's
+// PluginConnected succeeds first (it connected to plugin2's server). When
+// plugin2 then tries to register itself at the same (resourceName,
+// socketPath), it is rejected — the duplicate check in PluginConnected
+// prevents two endpoints from coexisting at the same socket path.
+//
+// This is not ideal behaviour: plugin2 is the rightful owner of the socket,
+// yet it cannot register. Plugin1 holds the endpointStore slot and runs
+// ListAndWatch against plugin2's gRPC server — which is alive and serving —
+// so plugin1's stream never breaks and PluginDisconnected is never called to
+// clear the slot. Plugin2's retries will be rejected indefinitely. Recovery
+// requires plugin2 to restart its gRPC server (which severs plugin1's stream,
+// triggering disconnect and clearing the slot) or external intervention
+// (e.g. kubelet restart).
+func TestSameSocketRace_FastTakeoverMayResultInInfiniteRetries(t *testing.T) {
+	_, tCtx := ktesting.NewTestContext(t)
+	manager, cleanup := newSameSocketTestManager(t)
+	defer cleanup()
+
+	const resourceName = "domain1.com/resource1"
+	const socketA = "/var/lib/kubelet/plugins/socketA.sock"
+
+	// p1 represents plugin1 whose dial connected to plugin2's server
+	// (fast takeover — plugin2 took over the socket before plugin1 dialed).
+	p1 := newFakeDevicePlugin(resourceName, socketA)
+	require.NoError(t, manager.PluginConnected(tCtx, resourceName, p1))
+
+	// p2 represents plugin2 — the rightful owner of the socket — trying to
+	// register. It is rejected because p1 already occupies that slot.
+	p2 := newFakeDevicePlugin(resourceName, socketA)
+	err := manager.PluginConnected(tCtx, resourceName, p2)
+	require.Error(t, err, "plugin2 is rejected even though it owns the socket")
+	require.Contains(t, err.Error(), "device plugin already connected")
+
+	// Simulate plugin2 retrying registration — it keeps failing because
+	// plugin1's entry is never cleared (its ListAndWatch stream is alive).
+	for retry := 0; retry < 3; retry++ {
+		p2Retry := newFakeDevicePlugin(resourceName, socketA)
+		err = manager.PluginConnected(tCtx, resourceName, p2Retry)
+		require.Error(t, err, "retry %d: plugin2 still cannot register", retry)
+		require.Contains(t, err.Error(), "device plugin already connected")
+	}
+
+	// Plugin1's stale registration remains — this is the problematic state.
+	require.Len(t, manager.endpointStore[resourceName], 1)
+	stored := manager.endpointStore[resourceName][socketA]
+	require.Same(t, p1.api, stored.e.(*endpointImpl).api,
+		"plugin1's stale endpoint persists; plugin2 cannot take over")
+
+	// Verify that Allocate calls go to plugin1's API — which in the real
+	// scenario is plugin2's gRPC server (since plugin1's dial connected
+	// to plugin2's listener). The kubelet thinks it's talking to plugin1,
+	// but the RPC actually reaches plugin2.
+	p1API := p1.api.(*fakeDevicePluginAPI)
+	p2API := p2.api.(*fakeDevicePluginAPI)
+	ep := stored.e.(*endpointImpl)
+	resp, err := ep.allocate(tCtx, []string{"dev1"})
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	require.Equal(t, 1, p1API.allocateCalled,
+		"Allocate must reach plugin1's API (which is really plugin2's server in the real race)")
+	require.Equal(t, 0, p2API.allocateCalled,
+		"plugin2's own API is never called — it was never registered")
 }
 
 // TestSameSocketRace_OverlappingConnects races two PluginConnected calls
