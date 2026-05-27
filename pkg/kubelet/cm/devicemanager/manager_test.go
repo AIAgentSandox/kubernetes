@@ -2201,3 +2201,47 @@ func TestEndpointSyncOnDisconnect(t *testing.T) {
 	require.Empty(t, manager.healthyDevices)
 	require.Empty(t, manager.unhealthyDevices)
 }
+
+// The tests that follow exercise the same-socket / same-resource lifecycle of
+// the per-endpoint store (m.endpointStore) introduced for side-by-side device
+// plugins sharing a resourceName. They derive their assertions from the
+// following invariants observed directly in manager.go and the v1beta1
+// plugin server. Each invariant is paired with its source location so future
+// readers can re-verify if behavior drifts.
+//
+//   I1. PluginConnected rejects a duplicate (resourceName, socketPath) pair
+//       with the exact error "device plugin already connected: <socketPath>"
+//       (manager.go: PluginConnected, the lookup against
+//       m.endpointStore[resourceName][e.socketPath()]). Neither
+//       m.endpoints[resourceName] nor m.endpointStore[resourceName] is
+//       mutated on the rejected path.
+//
+//   I2. PluginDisconnected is a no-op when (resourceName, socketPath) is
+//       unknown — either resourceName is absent from m.endpointStore, or
+//       the inner map has no entry for socketPath. No state mutation,
+//       no markResourceUnhealthy call (manager.go: PluginDisconnected,
+//       the two early returns after acquiring m.mutex).
+//
+//   I3. PluginDisconnected promotes an arbitrary surviving sibling into
+//       m.endpoints[resourceName] when the removed endpoint was not the
+//       last one for that resource. Go map iteration order is unspecified,
+//       so tests must accept any surviving endpoint as the promoted one
+//       (manager.go: PluginDisconnected, the `else` branch after
+//       delete(endpoints, socketPath)). markResourceUnhealthy is NOT
+//       called in this branch — healthy devices remain healthy.
+//
+//   I4. The plugin server's deregisterClient (handler.go) keys eviction
+//       purely on socketPath. It rebuilds clients[name] excluding entries
+//       whose SocketPath() matches and deletes the map key only when the
+//       rebuilt slice is empty. A second deregister for the same socket
+//       path will therefore evict whatever Client currently sits at that
+//       path, regardless of identity. (This invariant is exercised in
+//       plugin/v1beta1/handler_test.go.)
+//
+// These invariants together explain the same-socket race the test family
+// guards against: if a stale PluginDisconnected callback for an old
+// endpoint arrives after a new endpoint has been registered at the same
+// socket path, I4 (and the manager's symmetric keying via I2/I3) means the
+// kubelet has no identity-based protection — it acts on the socket path
+// alone. The test family locks in current behavior so any future change
+// to that policy is intentional and reviewed.

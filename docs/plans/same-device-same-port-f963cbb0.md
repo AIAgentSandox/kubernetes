@@ -99,19 +99,19 @@ than an idealised contract.
   `pkg/kubelet/cm/devicemanager/plugin/v1beta1/client.go`,
   `pkg/kubelet/cm/devicemanager/endpoint.go`.
 
-- [ ] Confirm `PluginConnected` rejects duplicate
+- [x] Confirm `PluginConnected` rejects duplicate
   `(resourceName, socketPath)` with the exact error string used in
   `manager.go:248`.
-- [ ] Confirm `PluginDisconnected` is a no-op when the
+- [x] Confirm `PluginDisconnected` is a no-op when the
   `(resourceName, socketPath)` pair is unknown
   (`manager.go:263-270`).
-- [ ] Confirm the primary `m.endpoints[resourceName]` slot is **promoted**
+- [x] Confirm the primary `m.endpoints[resourceName]` slot is **promoted**
   from an arbitrary surviving endpoint when a non-last sibling
   disconnects (`manager.go:278-285`).
-- [ ] Confirm `deregisterClient` removes only the matching socket and
+- [x] Confirm `deregisterClient` removes only the matching socket and
   deletes the resource key only when the slice becomes empty
   (`handler.go:116-138`).
-- [ ] Capture these invariants as test-file comments so future readers
+- [x] Capture these invariants as test-file comments so future readers
   understand *why* each assertion is made.
 
 ### Task 2: Unit tests for `PluginConnected` / `PluginDisconnected` race orderings
