@@ -45,7 +45,7 @@ limitations under the License.
 //        any client currently registered at socketA, regardless of whether
 //        that is a different concrete *Client* instance. This is the
 //        regression risk called out in the plan; see
-//        TestServer_LateDisconnectDoesNotEvictNewClient for the
+//        TestServer_LateDisconnectEvictsClientAtReusedSocket for the
 //        documenting/locking-in test.
 //
 // These tests are deliberately constructed against the unexported `server`
@@ -90,8 +90,9 @@ func newTestServer() *server {
 	}
 }
 
-// testLogger returns a discard logger appropriate for tests that don't
-// care about logged output (the handler functions log at V(2)+).
+// testLogger returns a klogr-backed logger. The handler functions log at
+// V(2)+ which klog suppresses at the default verbosity, so test output stays
+// quiet without needing a dedicated discard sink.
 func testLogger() klog.Logger {
 	return klog.NewKlogr()
 }
@@ -237,7 +238,10 @@ func TestServer_DeregisterClient_NoopForUnknownSocket(t *testing.T) {
 		"deregister for an unknown name must not create a phantom map entry (I-S4)")
 }
 
-// TestServer_LateDisconnectDoesNotEvictNewClient is the **core race test**.
+// TestServer_LateDisconnectEvictsClientAtReusedSocket is the **core race
+// test** for the same-socket reuse case. The name reflects what the test
+// actually asserts about current production behavior — NOT the
+// (currently-absent) protection some readers might expect.
 //
 // Scenario (mirrors the plan's same-device-same-port case): an old client
 // at socketA has been deregistered; a brand-new client process re-registers
@@ -252,7 +256,7 @@ func TestServer_DeregisterClient_NoopForUnknownSocket(t *testing.T) {
 // If a future change introduces identity-aware eviction (Task 4 Option B),
 // this test must flip together with the manager-side test
 // TestSameSocketRace_LateDisconnectAfterReconnect.
-func TestServer_LateDisconnectDoesNotEvictNewClient(t *testing.T) {
+func TestServer_LateDisconnectEvictsClientAtReusedSocket(t *testing.T) {
 	s := newTestServer()
 	logger := testLogger()
 

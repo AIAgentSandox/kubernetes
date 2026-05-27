@@ -2379,16 +2379,16 @@ func TestPluginConnected_SameResourceDifferentSocketsCoexist(t *testing.T) {
 	require.Contains(t, manager.endpointStore[resourceName], socketA)
 	require.Contains(t, manager.endpointStore[resourceName], socketB)
 
-	// Either endpoint may be the current primary — the manager picks the
-	// last connected; assert only that it is one of the two and matches a
-	// known api pointer (current behavior: last write wins).
+	// The manager does not promise which sibling is the primary when more
+	// than one is registered — Go map iteration order is unspecified
+	// (manager.go's promote-survivor branch in PluginDisconnected), and
+	// PluginConnected's last-write-wins is an implementation detail that
+	// callers must not depend on. Assert only that the primary is one of
+	// the two registered plugins.
 	primaryImpl, ok := manager.endpoints[resourceName].e.(*endpointImpl)
 	require.True(t, ok)
 	require.True(t, primaryImpl.api == pA.api || primaryImpl.api == pB.api,
 		"primary endpoint must be one of the two registered plugins")
-	// Document the current behavior: most recent PluginConnected wins.
-	require.Same(t, pB.api, primaryImpl.api,
-		"current behavior: m.endpoints points at the most recently connected plugin")
 }
 
 func TestPluginDisconnected_WrongSocketIsNoop(t *testing.T) {
@@ -2532,7 +2532,7 @@ func TestSameSocketRace_LateDisconnectAfterReconnect(t *testing.T) {
 	// Locked-in current behavior: the late callback evicts e2 even though
 	// e2 is a different process. Document the regression risk explicitly
 	// — if this assertion ever needs to flip, it should flip together
-	// with TestServer_LateDisconnectDoesNotEvictNewClient and the
+	// with TestServer_LateDisconnectEvictsClientAtReusedSocket and the
 	// identity-aware logic in handler.go / manager.go.
 	require.NotContains(t, manager.endpointStore, resourceName,
 		"current behavior: late disconnect callback keyed on socket path evicts the fresh endpoint (I4 regression risk)")

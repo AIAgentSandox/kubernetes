@@ -343,6 +343,9 @@ func testDevicePluginMultiple(f *framework.Framework, pluginSockDir string) {
 
 			ginkgo.By("Registering plugin2 on socket S (keyed by f.UniqueName) with one extra device")
 			plugin2 := testdeviceplugin.NewDevicePlugin(nil)
+			// Defer Stop so plugin2 is cleaned up if the test fails before
+			// the explicit Stop below. DevicePlugin.Stop is idempotent.
+			defer plugin2.Stop()
 			err = plugin2.RegisterDevicePlugin(ctx, f.UniqueName, e2enode.SampleDeviceResourceName,
 				[]*kubeletdevicepluginv1beta1.Device{{ID: "plugin2-dev-1", Health: kubeletdevicepluginv1beta1.Healthy}})
 			framework.ExpectNoError(err)
