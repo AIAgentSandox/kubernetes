@@ -194,45 +194,44 @@ under the same interleaving and we want explicit coverage.
 **Files:**
 - Create: `pkg/kubelet/cm/devicemanager/plugin/v1beta1/handler_test.go`.
 
-- [ ] Introduce a minimal `fakeClient` that implements
+- [x] Introduce a minimal `fakeClient` that implements
   `Client` — `Connect`/`Run`/`Disconnect` no-ops, `SocketPath()`
   returns a configured string. No real gRPC needed.
-- [ ] Introduce a minimal `fakeClientHandler` /
+- [x] Introduce a minimal `fakeClientHandler` /
   `fakeRegistrationHandler` if needed to construct a `server` via
   `NewServer`; otherwise build a `*server` literal in the test file
   (package-internal access is allowed since the file lives in
-  `package v1beta1`).
-- [ ] `TestServer_RegisterClient_AppendsPerSocket`: register two
+  `package v1beta1`). Chose the `*server` literal route — `clients`
+  map plus inherited `sync.Mutex` is all that registerClient /
+  deregisterClient / getClient touch, so no fake handlers are needed.
+- [x] `TestServer_RegisterClient_AppendsPerSocket`: register two
   clients with the same plugin name but different sockets; assert
   `s.clients[name]` has length 2 and both sockets are present.
-- [ ] `TestServer_DeregisterClient_OnlyRemovesMatchingSocket`:
+- [x] `TestServer_DeregisterClient_OnlyRemovesMatchingSocket`:
   start with two clients; deregister one by socket; assert the
   remaining client is the other one and the map entry survives.
-- [ ] `TestServer_DeregisterClient_DeletesKeyWhenLast`: deregister
+- [x] `TestServer_DeregisterClient_DeletesKeyWhenLast`: deregister
   the only client and assert `s.clients[name]` is removed from the
   map (not just emptied).
-- [ ] `TestServer_GetClient_ReturnsNilWhenSocketMissing`: register
+- [x] `TestServer_GetClient_ReturnsNilWhenSocketMissing`: register
   one client at `socketA`, call `getClient(name, socketB)`, expect nil.
-- [ ] `TestServer_DeregisterClient_NoopForUnknownSocket`: deregister
+- [x] `TestServer_DeregisterClient_NoopForUnknownSocket`: deregister
   a `socketB` that was never registered; assert no panic and the
   `socketA` client is untouched.
-- [ ] **Core race test —
+- [x] **Core race test —
   `TestServer_LateDisconnectDoesNotEvictNewClient`:**
   - Register client `c1` at `socketA`.
   - Deregister `c1` by `socketA`.
   - Register client `c2` at the *same* `socketA` (the test models a new
     process reusing the same path).
   - Issue a *second* deregister for `socketA` — emulating the late
-    callback for `c1`. Assert that the second deregister evicts `c2`
-    even though `c2` is a different `Client` instance (this is the
-    current behavior because eviction is keyed only by socket path).
-    Document this as the **regression risk** the task description is
-    pointing at. If we agree the kubelet should *not* evict `c2` in
-    this case (because `c2 != c1`), this test becomes a failing red
-    test that proves the bug — surface it in the
-    Questions section and decide whether to fix or just to lock in
-    current behavior.
-- [ ] Write/update tests (creating the file is itself the deliverable).
+    callback for `c1`. The test locks in the **current** behavior:
+    the late deregister evicts `c2` even though `c2 != c1`, because
+    eviction is keyed by socket path only (invariant I-S6 in the
+    new test file). Paired with the manager-side
+    `TestSameSocketRace_LateDisconnectAfterReconnect`; both must flip
+    together if Task 4 picks Option B.
+- [x] Write/update tests (creating the file is itself the deliverable).
 
 ### Task 4: Document and (if needed) tighten the manager's identity check
 
