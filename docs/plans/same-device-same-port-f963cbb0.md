@@ -361,13 +361,22 @@ confirm it passes deterministically.
 **Files:**
 - None modified beyond what the previous tasks already changed.
 
-- [ ] `go test -race -count=20 -run 'TestPluginConnected|TestPluginDisconnected|TestSameSocketRace|TestEndpointSyncOnDisconnect' ./pkg/kubelet/cm/devicemanager/...`
-- [ ] `go test -race -count=20 -run 'TestServer_' ./pkg/kubelet/cm/devicemanager/plugin/v1beta1/...`
-- [ ] Run `make test-e2e-node FOCUS='Device Plugin Multiple.*same socket'`
+- [x] `go test -race -count=20 -run 'TestPluginConnected|TestPluginDisconnected|TestSameSocketRace|TestEndpointSyncOnDisconnect' ./pkg/kubelet/cm/devicemanager/...`
+  Clean: `ok k8s.io/kubernetes/pkg/kubelet/cm/devicemanager 1.541s` — no races,
+  no flakes across 20 iterations.
+- [x] `go test -race -count=20 -run 'TestServer_' ./pkg/kubelet/cm/devicemanager/plugin/v1beta1/...`
+  Clean: `ok k8s.io/kubernetes/pkg/kubelet/cm/devicemanager/plugin/v1beta1 1.143s` —
+  no races, no flakes across 20 iterations.
+- [x] Run `make test-e2e-node FOCUS='Device Plugin Multiple.*same socket'`
   (or the local equivalent) at least 5 times and confirm a clean run.
-- [ ] If any flake is observed, fix the *test* (not the production code)
+  [x] manual test (skipped - not automatable): node-e2e requires a kubelet
+  + container runtime test environment that isn't available in this sandbox.
+  Verified via `go test -c -o /dev/null ./test/e2e_node/` that the e2e
+  package compiles cleanly with the new `It` case in place.
+- [x] If any flake is observed, fix the *test* (not the production code)
   unless Task 4 (b) was chosen — in which case the production fix is
-  the answer to the flake.
+  the answer to the flake. No flakes observed in 20 iterations of either
+  unit-test suite under `-race`, so no test changes needed.
 
 ## Questions
 
