@@ -729,6 +729,7 @@ func TestRetryPendingResizes(t *testing.T) {
 				continue // pod level resources makes the distinction between container types irrelevant
 			}
 			t.Run(fmt.Sprintf("%s/containerType=%s", tt.name, containerType), func(t *testing.T) {
+				_, ctx := ktesting.NewTestContext(t)
 				if tt.inPlacePodLevelResizeEnabled {
 					featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.InPlacePodLevelResourcesVerticalScaling, true)
 				}
@@ -799,7 +800,7 @@ func TestRetryPendingResizes(t *testing.T) {
 					return newPod, true
 				}
 				allocationManager.PushPendingResize(originalPod.UID)
-				allocationManager.RetryPendingResizes(TriggerReasonPodUpdated)
+				allocationManager.RetryPendingResizes(ctx, TriggerReasonPodUpdated)
 
 				var updatedPod *v1.Pod
 				if allocationManager.(*manager).statusManager.IsPodResizeInfeasible(newPod.UID) || allocationManager.(*manager).statusManager.IsPodResizeDeferred(newPod.UID) {
@@ -1015,6 +1016,7 @@ func TestRetryPendingResizesGuanteedQOSPods(t *testing.T) {
 		for _, originalPod := range tt.podsToTest {
 			isSidecarContainer := len(originalPod.Spec.InitContainers) > 0
 			t.Run(fmt.Sprintf("%s/sidecar=%t", tt.name, isSidecarContainer), func(t *testing.T) {
+				_, ctx := ktesting.NewTestContext(t)
 				featuregatetesting.SetFeatureGatesDuringTest(t, utilfeature.DefaultFeatureGate, featuregatetesting.FeatureOverrides{
 					features.InPlacePodVerticalScalingExclusiveCPUs:   tt.ipprExclusiveCPUsFeatureGate,
 					features.InPlacePodVerticalScalingExclusiveMemory: tt.ipprExclusiveMemoryFeatureGate,
@@ -1073,7 +1075,7 @@ func TestRetryPendingResizesGuanteedQOSPods(t *testing.T) {
 					return newPod, true
 				}
 				allocationManager.PushPendingResize(originalPod.UID)
-				allocationManager.RetryPendingResizes(TriggerReasonPodUpdated)
+				allocationManager.RetryPendingResizes(ctx, TriggerReasonPodUpdated)
 
 				var updatedPod *v1.Pod
 				if allocationManager.(*manager).statusManager.IsPodResizeInfeasible(newPod.UID) || allocationManager.(*manager).statusManager.IsPodResizeDeferred(newPod.UID) {
@@ -1216,6 +1218,7 @@ func TestRetryPendingResizesWithSwap(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			_, ctx := ktesting.NewTestContext(t)
 			originalPod := testPod.DeepCopy()
 			originalPod.Spec.Containers[0].ResizePolicy = []v1.ContainerResizePolicy{tt.resizePolicy}
 			if tt.swapBehavior == kubetypes.NoSwap {
@@ -1252,7 +1255,7 @@ func TestRetryPendingResizesWithSwap(t *testing.T) {
 				return newPod, true
 			}
 			allocationManager.PushPendingResize(testPod.UID)
-			allocationManager.RetryPendingResizes(TriggerReasonPodUpdated)
+			allocationManager.RetryPendingResizes(ctx, TriggerReasonPodUpdated)
 
 			var updatedPod *v1.Pod
 			if allocationManager.(*manager).statusManager.IsPodResizeInfeasible(newPod.UID) {
@@ -1449,6 +1452,7 @@ func TestRetryPendingResizesMultipleConditions(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
+			_, ctx := ktesting.NewTestContext(t)
 			testPod.Generation = tc.generation
 			testPod.Spec = v1.PodSpec{
 				Containers: []v1.Container{{
@@ -1461,7 +1465,7 @@ func TestRetryPendingResizesMultipleConditions(t *testing.T) {
 			}
 
 			allocationManager.PushPendingResize(testPod.UID)
-			allocationManager.RetryPendingResizes(TriggerReasonPodUpdated)
+			allocationManager.RetryPendingResizes(ctx, TriggerReasonPodUpdated)
 
 			conditions := allocationManager.(*manager).statusManager.GetPodResizeConditions(testPod.UID)
 			require.Len(t, conditions, len(tc.expectedConditions))

@@ -119,8 +119,8 @@ func TestFakeAdmit(t *testing.T) {
 		pod.Status.QOSClass = tc.qosClass
 		podAttr.Pod = &pod
 		actual := fm.Admit(tCtx, &podAttr)
-		if reflect.DeepEqual(actual, tc.result) {
-			t.Errorf("Error occurred, expected Admit in result to be %v got %v", tc.result, actual.Admit)
+		if actual.Admit != tc.expected {
+			t.Errorf("Error occurred, expected Admit in result to be %v got %v", tc.expected, actual.Admit)
 		}
 	}
 }

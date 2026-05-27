@@ -2912,7 +2912,7 @@ func (kl *Kubelet) HandlePodAdditions(ctx context.Context, pods []*v1.Pod) {
 			kl.allocationManager.PushPendingResize(uid)
 		}
 		if len(pendingResizes) > 0 {
-			kl.allocationManager.RetryPendingResizes(allocation.TriggerReasonPodsAdded)
+			kl.allocationManager.RetryPendingResizes(ctx, allocation.TriggerReasonPodsAdded)
 		}
 	}
 }
@@ -2941,7 +2941,7 @@ func (kl *Kubelet) HandlePodUpdates(ctx context.Context, pods []*v1.Pod) {
 					kl.allocationManager.PushPendingResize(pod.UID)
 					// TODO(natasha41575): If the resize is immediately actuated, it will trigger a pod sync
 					// and we will end up calling UpdatePod twice. Figure out if there is a way to avoid this.
-					kl.allocationManager.RetryPendingResizes(allocation.TriggerReasonPodUpdated)
+					kl.allocationManager.RetryPendingResizes(ctx, allocation.TriggerReasonPodUpdated)
 				} else {
 					// We can hit this case if a pending resize has been reverted,
 					// so we need to clear the pending resize condition.
@@ -3097,7 +3097,7 @@ func (kl *Kubelet) HandlePodRemoves(ctx context.Context, pods []*v1.Pod) {
 	}
 
 	if utilfeature.DefaultFeatureGate.Enabled(features.InPlacePodVerticalScaling) {
-		kl.allocationManager.RetryPendingResizes(allocation.TriggerReasonPodsRemoved)
+		kl.allocationManager.RetryPendingResizes(ctx, allocation.TriggerReasonPodsRemoved)
 	}
 }
 
@@ -3188,7 +3188,7 @@ func (kl *Kubelet) HandlePodReconcile(ctx context.Context, pods []*v1.Pod) {
 
 	if utilfeature.DefaultFeatureGate.Enabled(features.InPlacePodVerticalScaling) {
 		if retryPendingResizes {
-			kl.allocationManager.RetryPendingResizes(triggerReason)
+			kl.allocationManager.RetryPendingResizes(ctx, triggerReason)
 		}
 	}
 }

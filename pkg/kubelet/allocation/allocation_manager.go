@@ -104,7 +104,7 @@ type Manager interface {
 	HasPendingResizes() bool
 
 	// RetryPendingResizes retries all pending resizes.
-	RetryPendingResizes(trigger string)
+	RetryPendingResizes(ctx context.Context, trigger string)
 }
 
 type manager struct {
@@ -211,10 +211,8 @@ func (m *manager) Run(ctx context.Context) {
 	}()
 }
 
-func (m *manager) RetryPendingResizes(trigger string) {
-	// Use context.TODO() because we currently do not have a proper context to pass in.
-	// Replace this with an appropriate context when refactoring this function to accept a context parameter.
-	m.retryPendingResizes(context.TODO(), trigger)
+func (m *manager) RetryPendingResizes(ctx context.Context, trigger string) {
+	m.retryPendingResizes(ctx, trigger)
 }
 
 func (m *manager) retryPendingResizes(ctx context.Context, trigger string) []*v1.Pod {
