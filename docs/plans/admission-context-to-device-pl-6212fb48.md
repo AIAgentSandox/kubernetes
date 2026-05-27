@@ -191,15 +191,15 @@ The 2025 allocation manager owns `AddPod`, `handlePodResourcesResize`, and `canA
 - Modify: every caller of `canAdmitPod` — pass `ctx` (not a logger)
 - Modify: `pkg/kubelet/allocation/*_test.go` — pass `ctx` from `ktesting.NewTestContext(t)`; drop any logger argument
 
-- [ ] Update `Manager` interface `AddPod` signature; update impl to drop `klog.TODO()`.
-- [ ] Update `handlePodResourcesResize` signature — **drop the `logger` parameter, add `ctx`**; thread `ctx` from the resize-handling caller inside `Run`.
-- [ ] Update `canAdmitPod` signature — **drop the `logger` parameter, add `ctx`**; ensure it passes `ctx` to every `podAdmitHandler.Admit`.
-- [ ] In `handlers.go`, confirm `podResizesAdmitHandler` no longer stores `h.logger`; `NewPodResizesAdmitHandler` constructor signature lost its `logger klog.Logger` parameter (work begun in Task 1).
-- [ ] Update `kubelet.go:1166` `NewPodResizesAdmitHandler(...)` call site to drop the logger argument (work begun in Task 1; verify).
-- [ ] Update `kubelet.go:2882` to pass `ctx`.
-- [ ] **Verify `Manager.RemovePod` / `manager.RemovePod` are not modified** — they remain off the admission path and out of scope for this PR.
-- [ ] Update all `pkg/kubelet/allocation/*_test.go` test callers — pass `ctx`, drop any logger argument.
-- [ ] Run `go build ./pkg/kubelet/... && go test ./pkg/kubelet/allocation/...`.
+- [x] Update `Manager` interface `AddPod` signature; update impl to drop `klog.TODO()`.
+- [x] Update `handlePodResourcesResize` signature — **drop the `logger` parameter, add `ctx`**; thread `ctx` from the resize-handling caller inside `Run`.
+- [x] Update `canAdmitPod` signature — **drop the `logger` parameter, add `ctx`**; ensure it passes `ctx` to every `podAdmitHandler.Admit`.
+- [x] In `handlers.go`, confirm `podResizesAdmitHandler` no longer stores `h.logger`; `NewPodResizesAdmitHandler` constructor signature lost its `logger klog.Logger` parameter (work begun in Task 1).
+- [x] Update `kubelet.go:1166` `NewPodResizesAdmitHandler(...)` call site to drop the logger argument (work begun in Task 1; verify).
+- [x] Update `kubelet.go:2882` to pass `ctx`.
+- [x] **Verify `Manager.RemovePod` / `manager.RemovePod` are not modified** — they remain off the admission path and out of scope for this PR.
+- [x] Update all `pkg/kubelet/allocation/*_test.go` test callers — pass `ctx`, drop any logger argument.
+- [x] Run `go build ./pkg/kubelet/... && go test ./pkg/kubelet/allocation/...`.
 
 ### Task 8: Audit remaining mixed `ctx` + `logger` signatures on the admission chain
 

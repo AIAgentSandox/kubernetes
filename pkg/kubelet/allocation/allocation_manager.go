@@ -199,7 +199,7 @@ func (m *manager) Run(ctx context.Context) {
 		for {
 			select {
 			case <-m.ticker.C:
-				successfulResizes := m.retryPendingResizes(logger, triggerReasonPeriodic)
+				successfulResizes := m.retryPendingResizes(ctx, triggerReasonPeriodic)
 				for _, po := range successfulResizes {
 					logger.Info("Successfully retried resize after timeout", "pod", klog.KObj(po))
 				}
@@ -212,13 +212,13 @@ func (m *manager) Run(ctx context.Context) {
 }
 
 func (m *manager) RetryPendingResizes(trigger string) {
-	// Use klog.TODO() because we currently do not have a proper logger to pass in.
-	// Replace this with an appropriate logger when refactoring this function to accept a logger parameter.
-	logger := klog.TODO()
-	m.retryPendingResizes(logger, trigger)
+	// Use context.TODO() because we currently do not have a proper context to pass in.
+	// Replace this with an appropriate context when refactoring this function to accept a context parameter.
+	m.retryPendingResizes(context.TODO(), trigger)
 }
 
-func (m *manager) retryPendingResizes(logger klog.Logger, trigger string) []*v1.Pod {
+func (m *manager) retryPendingResizes(ctx context.Context, trigger string) []*v1.Pod {
+	logger := klog.FromContext(ctx)
 	m.allocationMutex.Lock()
 	defer m.allocationMutex.Unlock()
 
@@ -244,7 +244,7 @@ func (m *manager) retryPendingResizes(logger klog.Logger, trigger string) []*v1.
 		oldResizeStatus := m.statusManager.GetPodResizeConditions(uid)
 		isDeferred := m.statusManager.IsPodResizeDeferred(uid)
 
-		resizeAllocated, err := m.handlePodResourcesResize(logger, pod)
+		resizeAllocated, err := m.handlePodResourcesResize(ctx, pod)
 		switch {
 		case err != nil:
 			logger.Error(err, "Failed to handle pod resources resize", "pod", klog.KObj(pod))
@@ -548,7 +548,8 @@ func (m *manager) RemoveOrphanedPods(remainingPods sets.Set[types.UID]) {
 	m.allocated.RemoveOrphanedPods(remainingPods)
 }
 
-func (m *manager) handlePodResourcesResize(logger klog.Logger, pod *v1.Pod) (bool, error) {
+func (m *manager) handlePodResourcesResize(ctx context.Context, pod *v1.Pod) (bool, error) {
+	logger := klog.FromContext(ctx)
 	_, updated := m.UpdatePodFromAllocation(pod)
 	if !updated {
 		// Desired resources == allocated resources. Pod allocation does not need to be updated.
@@ -557,8 +558,6 @@ func (m *manager) handlePodResourcesResize(logger klog.Logger, pod *v1.Pod) (boo
 	}
 
 	// Desired resources != allocated resources. Can we update the allocation to the desired resources?
-	// TODO: thread context through resize path (Task 7 in the admission context PR).
-	ctx := klog.NewContext(context.TODO(), logger)
 	fit, reason, message := m.canAdmitPod(ctx, m.getAllocatedPods(m.getActivePods()), pod, lifecycle.ResizeOperation)
 	if fit {
 		// Update pod resource allocation checkpoint
