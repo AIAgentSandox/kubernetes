@@ -92,13 +92,13 @@ The HintProvider interface is the contract between TopologyManager and the CPU/M
 - Modify: `pkg/kubelet/cm/topologymanager/scope_pod_test.go` (`calculateAffinity`, `accumulateProvidersHints` calls)
 - Modify: `pkg/kubelet/cm/topologymanager/policy_test.go` (`provider.GetTopologyHints` calls in `testPolicyMerge`)
 
-- [ ] Change `HintProvider` interface (`GetTopologyHints`, `GetPodTopologyHints`, `Allocate`, `AllocatePod`) to take `ctx context.Context` as the first parameter.
-- [ ] Update `scope.allocateAlignedResources` to take `ctx`; update `scope.allocatePodAlignedResources` to take `ctx`; update `scope.admitPolicyNone` to take `ctx`; thread `ctx` from `Scope.Admit` through these helpers.
-- [ ] Update `containerScope.accumulateProvidersHints` and `calculateAffinity` to take `ctx`; **delete the existing `logger klog.Logger` parameter** (if present); inside, extract `logger := klog.FromContext(ctx)` once.
-- [ ] Update `podScope.accumulateProvidersHints` and `calculateAffinity` similarly — drop any `klog.Logger` parameter; extract from `ctx` inside.
-- [ ] Update `mockHintProvider` and all tests under `pkg/kubelet/cm/topologymanager/` to pass `ctx` from `ktesting.NewTestContext(t)`.
-- [ ] To keep the tree compiling at the end of this task, also perform the **interface-signature-only** edits on the CPU/Memory/Device managers' `Allocate`/`AllocatePod`/`GetTopologyHints`/`GetPodTopologyHints` (just add `ctx context.Context` as the first parameter and use `_ = ctx` inside if needed). The full internal cleanup of `klog.TODO()` and the logger-parameter removal inside those managers is done in Tasks 3–5.
-- [ ] Run `go build ./pkg/kubelet/cm/... && go test ./pkg/kubelet/cm/topologymanager/...`.
+- [x] Change `HintProvider` interface (`GetTopologyHints`, `GetPodTopologyHints`, `Allocate`, `AllocatePod`) to take `ctx context.Context` as the first parameter.
+- [x] Update `scope.allocateAlignedResources` to take `ctx`; update `scope.allocatePodAlignedResources` to take `ctx`; update `scope.admitPolicyNone` to take `ctx`; thread `ctx` from `Scope.Admit` through these helpers.
+- [x] Update `containerScope.accumulateProvidersHints` and `calculateAffinity` to take `ctx`; **delete the existing `logger klog.Logger` parameter** (if present); inside, extract `logger := klog.FromContext(ctx)` once.
+- [x] Update `podScope.accumulateProvidersHints` and `calculateAffinity` similarly — drop any `klog.Logger` parameter; extract from `ctx` inside.
+- [x] Update `mockHintProvider` and all tests under `pkg/kubelet/cm/topologymanager/` to pass `ctx` from `ktesting.NewTestContext(t)`.
+- [x] To keep the tree compiling at the end of this task, also perform the **interface-signature-only** edits on the CPU/Memory/Device managers' `Allocate`/`AllocatePod`/`GetTopologyHints`/`GetPodTopologyHints` (just add `ctx context.Context` as the first parameter and use `_ = ctx` inside if needed). The full internal cleanup of `klog.TODO()` and the logger-parameter removal inside those managers is done in Tasks 3–5.
+- [x] Run `go build ./pkg/kubelet/cm/... && go test ./pkg/kubelet/cm/topologymanager/...`.
 
 ### Task 3: Thread `ctx` through CPU Manager admission paths
 

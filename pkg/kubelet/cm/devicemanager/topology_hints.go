@@ -17,6 +17,8 @@ limitations under the License.
 package devicemanager
 
 import (
+	"context"
+
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/component-helpers/resource"
@@ -30,9 +32,8 @@ import (
 // GetTopologyHints implements the TopologyManager HintProvider Interface which
 // ensures the Device Manager is consulted when Topology Aware Hints for each
 // container are created.
-func (m *ManagerImpl) GetTopologyHints(pod *v1.Pod, container *v1.Container) map[string][]topologymanager.TopologyHint {
-	// Use klog.TODO() because we currently do not have a proper logger to pass in.
-	// Replace this with an appropriate logger when refactoring this function to accept a logger parameter.
+func (m *ManagerImpl) GetTopologyHints(ctx context.Context, pod *v1.Pod, container *v1.Container) map[string][]topologymanager.TopologyHint {
+	_ = ctx // TODO(Task 5): replace klog.TODO() with klog.FromContext(ctx).
 	logger := klog.TODO()
 	// Garbage collect any stranded device resources before providing TopologyHints
 	m.UpdateAllocatedDevices()
@@ -85,9 +86,8 @@ func (m *ManagerImpl) GetTopologyHints(pod *v1.Pod, container *v1.Container) map
 
 // GetPodTopologyHints implements the topologymanager.HintProvider Interface which
 // ensures the Device Manager is consulted when Topology Aware Hints for Pod are created.
-func (m *ManagerImpl) GetPodTopologyHints(pod *v1.Pod) map[string][]topologymanager.TopologyHint {
-	// Use klog.TODO() because we currently do not have a proper logger to pass in.
-	// Replace this with an appropriate logger when refactoring this function to accept a logger parameter.
+func (m *ManagerImpl) GetPodTopologyHints(ctx context.Context, pod *v1.Pod) map[string][]topologymanager.TopologyHint {
+	_ = ctx // TODO(Task 5): replace klog.TODO() with klog.FromContext(ctx).
 	logger := klog.TODO()
 	// Garbage collect any stranded device resources before providing TopologyHints
 	m.UpdateAllocatedDevices()

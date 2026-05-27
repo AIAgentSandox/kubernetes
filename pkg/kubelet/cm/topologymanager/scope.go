@@ -140,9 +140,9 @@ func (s *scope) RemoveContainer(containerID string) error {
 	return nil
 }
 
-func (s *scope) admitPolicyNone(pod *v1.Pod) lifecycle.PodAdmitResult {
+func (s *scope) admitPolicyNone(ctx context.Context, pod *v1.Pod) lifecycle.PodAdmitResult {
 	for _, container := range append(pod.Spec.InitContainers, pod.Spec.Containers...) {
-		err := s.allocateAlignedResources(pod, &container)
+		err := s.allocateAlignedResources(ctx, pod, &container)
 		if err != nil {
 			return admission.GetPodAdmitResult(err)
 		}
@@ -152,9 +152,9 @@ func (s *scope) admitPolicyNone(pod *v1.Pod) lifecycle.PodAdmitResult {
 
 // It would be better to implement this function in topologymanager instead of scope
 // but topologymanager does not track providers anymore
-func (s *scope) allocateAlignedResources(pod *v1.Pod, container *v1.Container) error {
+func (s *scope) allocateAlignedResources(ctx context.Context, pod *v1.Pod, container *v1.Container) error {
 	for _, provider := range s.hintProviders {
-		err := provider.Allocate(pod, container)
+		err := provider.Allocate(ctx, pod, container)
 		if err != nil {
 			return err
 		}
@@ -162,9 +162,9 @@ func (s *scope) allocateAlignedResources(pod *v1.Pod, container *v1.Container) e
 	return nil
 }
 
-func (s *scope) allocatePodAlignedResources(pod *v1.Pod) error {
+func (s *scope) allocatePodAlignedResources(ctx context.Context, pod *v1.Pod) error {
 	for _, provider := range s.hintProviders {
-		err := provider.AllocatePod(pod)
+		err := provider.AllocatePod(ctx, pod)
 		if err != nil {
 			return err
 		}

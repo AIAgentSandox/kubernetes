@@ -61,6 +61,7 @@ func makeSocketMask(sockets ...int) bitmask.BitMask {
 }
 
 func TestGetTopologyHints(t *testing.T) {
+	tCtx := ktesting.Init(t)
 	tcases := getCommonTestCases()
 
 	for _, tc := range tcases {
@@ -97,7 +98,7 @@ func TestGetTopologyHints(t *testing.T) {
 			}
 		}
 
-		hints := m.GetTopologyHints(tc.pod, &tc.pod.Spec.Containers[0])
+		hints := m.GetTopologyHints(tCtx, tc.pod, &tc.pod.Spec.Containers[0])
 
 		for r := range tc.expectedHints {
 			sort.SliceStable(hints[r], func(i, j int) bool {
@@ -926,6 +927,7 @@ func TestGetPodDeviceRequest(t *testing.T) {
 }
 
 func TestGetPodTopologyHints(t *testing.T) {
+	tCtx := ktesting.Init(t)
 	tcases := getCommonTestCases()
 	tcases = append(tcases, getPodScopeTestCases()...)
 
@@ -964,7 +966,7 @@ func TestGetPodTopologyHints(t *testing.T) {
 			}
 		}
 
-		hints := m.GetPodTopologyHints(tc.pod)
+		hints := m.GetPodTopologyHints(tCtx, tc.pod)
 
 		for r := range tc.expectedHints {
 			sort.SliceStable(hints[r], func(i, j int) bool {

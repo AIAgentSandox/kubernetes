@@ -65,7 +65,7 @@ type Manager interface {
 
 	// Allocate is called to pre-allocate memory resources during Pod admission.
 	// This must be called at some point prior to the AddContainer() call for a container, e.g. at pod admission time.
-	Allocate(pod *v1.Pod, container *v1.Container) error
+	Allocate(ctx context.Context, pod *v1.Pod, container *v1.Container) error
 
 	// RemoveContainer is called after Kubelet decides to kill or delete a
 	// container. After this call, any memory allocated to the container is freed.
@@ -77,15 +77,15 @@ type Manager interface {
 	// GetTopologyHints implements the topologymanager.HintProvider Interface
 	// and is consulted to achieve NUMA aware resource alignment among this
 	// and other resource controllers.
-	GetTopologyHints(*v1.Pod, *v1.Container) map[string][]topologymanager.TopologyHint
+	GetTopologyHints(ctx context.Context, pod *v1.Pod, container *v1.Container) map[string][]topologymanager.TopologyHint
 
 	// GetPodTopologyHints implements the topologymanager.HintProvider Interface
 	// and is consulted to achieve NUMA aware resource alignment among this
 	// and other resource controllers.
-	GetPodTopologyHints(*v1.Pod) map[string][]topologymanager.TopologyHint
+	GetPodTopologyHints(ctx context.Context, pod *v1.Pod) map[string][]topologymanager.TopologyHint
 
 	// AllocatePod is called to trigger the allocation of memory to a pod.
-	AllocatePod(pod *v1.Pod) error
+	AllocatePod(ctx context.Context, pod *v1.Pod) error
 
 	// GetMemoryNUMANodes provides NUMA nodes that are used to allocate the container memory
 	GetMemoryNUMANodes(logger klog.Logger, pod *v1.Pod, container *v1.Container) sets.Set[int]
@@ -264,7 +264,8 @@ func (m *manager) GetMemoryNUMANodes(logger klog.Logger, pod *v1.Pod, container 
 }
 
 // Allocate is called to pre-allocate memory resources during Pod admission.
-func (m *manager) Allocate(pod *v1.Pod, container *v1.Container) error {
+func (m *manager) Allocate(ctx context.Context, pod *v1.Pod, container *v1.Container) error {
+	_ = ctx // TODO(Task 4): replace klog.TODO() with klog.FromContext(ctx) and drop logger param on policy.
 	logger := klog.TODO()
 	m.removeStaleState(logger)
 
@@ -279,7 +280,8 @@ func (m *manager) Allocate(pod *v1.Pod, container *v1.Container) error {
 	return nil
 }
 
-func (m *manager) AllocatePod(pod *v1.Pod) error {
+func (m *manager) AllocatePod(ctx context.Context, pod *v1.Pod) error {
+	_ = ctx // TODO(Task 4): replace klog.TODO() with klog.FromContext(ctx) and drop logger param on policy.
 	logger := klog.TODO() // until we move topology manager to contextual logging
 
 	m.removeStaleState(logger)
@@ -320,10 +322,8 @@ func (m *manager) State() state.Reader {
 }
 
 // GetPodTopologyHints returns the topology hints for the topology manager
-func (m *manager) GetPodTopologyHints(pod *v1.Pod) map[string][]topologymanager.TopologyHint {
-	// Use context.TODO() because we currently do not have a proper context to pass in.
-	// This should be replaced with an appropriate context when refactoring this function to accept a context parameter.
-	ctx := context.TODO()
+func (m *manager) GetPodTopologyHints(ctx context.Context, pod *v1.Pod) map[string][]topologymanager.TopologyHint {
+	_ = ctx // TODO(Task 4): replace klog.TODO() with klog.FromContext(ctx) and drop logger param on policy.
 	// Garbage collect any stranded resources before providing TopologyHints
 	m.removeStaleState(klog.FromContext(ctx))
 	// Delegate to active policy
@@ -331,7 +331,8 @@ func (m *manager) GetPodTopologyHints(pod *v1.Pod) map[string][]topologymanager.
 }
 
 // GetTopologyHints returns the topology hints for the topology manager
-func (m *manager) GetTopologyHints(pod *v1.Pod, container *v1.Container) map[string][]topologymanager.TopologyHint {
+func (m *manager) GetTopologyHints(ctx context.Context, pod *v1.Pod, container *v1.Container) map[string][]topologymanager.TopologyHint {
+	_ = ctx // TODO(Task 4): replace klog.TODO() with klog.FromContext(ctx) and drop logger param on policy.
 	// Garbage collect any stranded resources before providing TopologyHints
 	m.removeStaleState(klog.TODO())
 	// Delegate to active policy
