@@ -171,8 +171,8 @@ After Tasks 2–5 land independently, the Scope still needs to actually call the
 - Modify: `pkg/kubelet/cm/topologymanager/scope_container.go` (`accumulateProvidersHints` calls `provider.GetTopologyHints(ctx, pod, container)`)
 - Modify: `pkg/kubelet/cm/topologymanager/scope_pod.go` (`accumulateProvidersHints` calls `provider.GetPodTopologyHints(ctx, pod)`)
 
-- [ ] Verify every `provider.*` call in `pkg/kubelet/cm/topologymanager/scope*.go` passes `ctx` and **no** explicit logger argument.
-- [ ] Run `go build ./pkg/kubelet/cm/... && go test ./pkg/kubelet/cm/...`.
+- [x] Verify every `provider.*` call in `pkg/kubelet/cm/topologymanager/scope*.go` passes `ctx` and **no** explicit logger argument.
+- [x] Run `go build ./pkg/kubelet/cm/... && go test ./pkg/kubelet/cm/...`.
 
 ### Task 7: Thread `ctx` through Allocation Manager admission paths
 
