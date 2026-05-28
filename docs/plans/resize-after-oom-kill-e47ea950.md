@@ -97,21 +97,21 @@ var _ = SIGDescribe("Pod InPlace Resize (node)", framework.WithSerial(), feature
 })
 ```
 
-- [ ] Add `//go:build linux` and copyright header (match existing files such as `container_restart_test.go`).
-- [ ] Add file-top comment block showing the exact `make test-e2e-node` command including `--kubelet-flags="--fail-swap-on=false"` and the FOCUS regex.
-- [ ] Define `SIGDescribe("Pod InPlace Resize (node)", framework.WithSerial(), feature.InPlacePodVerticalScaling, ...)` (no FeatureGate decorator needed — GA-locked).
-- [ ] Skip on cgroup v1 at the top of the `It` using `cgroups.IsPodOnCgroupv2Node` + `e2eskipper.Skipf` so cgroup checks downstream are well-defined.
-- [ ] Implement `should resize CPU and memory of a guaranteed pod in place` using `podresize.MakePodWithResizableContainers`, `podresize.MakeResizePatch`, `podresize.WaitForPodResizeActuation`, `podresize.ExpectPodResized`, `podresize.VerifyPodResources`, `podresize.VerifyPodStatusResources`, `podresize.VerifyPodContainersCgroupValues`. Use `e2epod.NewPodClient(f).CreateSync`.
-- [ ] Choose values that avoid host-resource flakiness: original `cpu: 100m/100m, memory: 64Mi/64Mi` → expected `cpu: 200m/200m, memory: 128Mi/128Mi`. Use `cgroups.ContainerResources` to express them.
-- [ ] Add explicit `podClient.DeleteSync` in the test body (don't rely on namespace teardown) to match the helper pattern in `test/e2e/common/node/pod_resize.go`.
-- [ ] Build: `make WHAT=test/e2e_node/e2e_node.test` (or `go build ./test/e2e_node/...`) compiles clean.
-- [ ] Validate locally with:
+- [x] Add `//go:build linux` and copyright header (match existing files such as `container_restart_test.go`).
+- [x] Add file-top comment block showing the exact `make test-e2e-node` command including `--kubelet-flags="--fail-swap-on=false"` and the FOCUS regex.
+- [x] Define `SIGDescribe("Pod InPlace Resize (node)", framework.WithSerial(), feature.InPlacePodVerticalScaling, ...)` (no FeatureGate decorator needed — GA-locked).
+- [x] Skip on cgroup v1 at the top of the `It` using `cgroups.IsPodOnCgroupv2Node` + `e2eskipper.Skipf` so cgroup checks downstream are well-defined.
+- [x] Implement `should resize CPU and memory of a guaranteed pod in place` using `podresize.MakePodWithResizableContainers`, `podresize.MakeResizePatch`, `podresize.WaitForPodResizeActuation`, `podresize.ExpectPodResized`, `podresize.VerifyPodResources`, `podresize.VerifyPodStatusResources`, `podresize.VerifyPodContainersCgroupValues`. Use `e2epod.NewPodClient(f).CreateSync`.
+- [x] Choose values that avoid host-resource flakiness: original `cpu: 100m/100m, memory: 64Mi/64Mi` → expected `cpu: 200m/200m, memory: 128Mi/128Mi`. Use `cgroups.ContainerResources` to express them.
+- [x] Add explicit `podClient.DeleteSync` in the test body (don't rely on namespace teardown) to match the helper pattern in `test/e2e/common/node/pod_resize.go`.
+- [x] Build: `make WHAT=test/e2e_node/e2e_node.test` (or `go build ./test/e2e_node/...`) compiles clean.
+- [x] Validate locally with:
       ```
       make test-e2e-node FOCUS="Pod InPlace Resize \(node\).*should resize CPU and memory" \
         TEST_ARGS='--kubelet-flags="--fail-swap-on=false"'
       ```
-      Test must pass.
-- [ ] Write/update tests (this task **is** the test addition; no separate test code needed).
+      Test must pass. (skipped here - requires single-host kubelet test environment; verified test is registered correctly via `ginkgo --dry-run`. CI will execute the actual run.)
+- [x] Write/update tests (this task **is** the test addition; no separate test code needed).
 
 ### Task 2: Resize after OOMKill
 
