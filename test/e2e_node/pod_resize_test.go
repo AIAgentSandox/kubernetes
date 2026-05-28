@@ -20,7 +20,12 @@ limitations under the License.
 //
 //	make test-e2e-node \
 //	    FOCUS='Pod InPlace Resize \(node\)' \
+//	    SKIP='' \
 //	    TEST_ARGS='--kubelet-flags="--fail-swap-on=false"'
+//
+// SKIP='' is required because the default skip pattern includes [Serial], which
+// these tests carry via framework.WithSerial(); without it the FOCUS matches but
+// the suite skips both tests.
 
 package e2enode
 
@@ -33,6 +38,7 @@ import (
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	helpers "k8s.io/component-helpers/resource"
 	"k8s.io/kubernetes/test/e2e/common/node/framework/cgroups"
 	"k8s.io/kubernetes/test/e2e/common/node/framework/podresize"
 	"k8s.io/kubernetes/test/e2e/feature"
@@ -83,6 +89,9 @@ var _ = SIGDescribe("Pod InPlace Resize (node)", framework.WithSerial(), feature
 		testPod.GenerateName = "resize-node-test-"
 
 		newPod := podClient.CreateSync(ctx, testPod)
+		ginkgo.DeferCleanup(func(ctx context.Context) {
+			podClient.DeleteSync(ctx, newPod.Name, metav1.DeleteOptions{}, f.Timeouts.PodDelete)
+		})
 
 		ginkgo.By("verifying initial pod resources, status, and container cgroup values")
 		podresize.VerifyPodResources(newPod, originalContainers, nil)
@@ -106,9 +115,6 @@ var _ = SIGDescribe("Pod InPlace Resize (node)", framework.WithSerial(), feature
 		podresize.ExpectPodResized(ctx, f, resizedPod, expected)
 		podresize.VerifyPodResources(resizedPod, expected, nil)
 		framework.ExpectNoError(podresize.VerifyPodContainersCgroupValues(ctx, f, resizedPod, expected))
-
-		ginkgo.By("deleting pod")
-		podClient.DeleteSync(ctx, newPod.Name, metav1.DeleteOptions{}, f.Timeouts.PodDelete)
 	})
 
 	ginkgo.It("should accept resize after the container is OOMKilled and update pod cgroup memory limit", func(ctx context.Context) {
@@ -157,6 +163,9 @@ var _ = SIGDescribe("Pod InPlace Resize (node)", framework.WithSerial(), feature
 		// Use Create (not CreateSync) — the pod will be in CrashLoopBackOff and never Ready
 		// until the resize patch raises the memory limit.
 		newPod := podClient.Create(ctx, testPod)
+		ginkgo.DeferCleanup(func(ctx context.Context) {
+			podClient.DeleteSync(ctx, newPod.Name, metav1.DeleteOptions{}, f.Timeouts.PodDelete)
+		})
 
 		ginkgo.By("waiting for the container to OOMKill and enter CrashLoopBackOff with restartCount >= 4")
 		framework.ExpectNoError(framework.Gomega().
@@ -212,6 +221,11 @@ var _ = SIGDescribe("Pod InPlace Resize (node)", framework.WithSerial(), feature
 			WithTimeout(5 * time.Minute).
 			WithPolling(2 * time.Second).
 			Should(framework.MakeMatcher(func(p *v1.Pod) (func() string, error) {
+				// Surface the terminal Infeasible state with a clear message rather than
+				// the generic "waiting for observedGeneration" — matches WaitForPodResizeActuation.
+				if helpers.IsPodResizeInfeasible(p) {
+					return func() string { return "resize is infeasible" }, nil
+				}
 				if p.Status.ObservedGeneration < p.Generation {
 					return func() string {
 						return fmt.Sprintf("waiting for observedGeneration (%d) to catch up to generation (%d)",
@@ -244,9 +258,6 @@ var _ = SIGDescribe("Pod InPlace Resize (node)", framework.WithSerial(), feature
 		if err := podresize.VerifyPodCgroupValues(ctx, f, resizedPod); err != nil {
 			e2eskipper.Skipf("known issue: pod-level cgroup memory.max not updated post-OOMKill resize: %v", err)
 		}
-
-		ginkgo.By("deleting pod")
-		podClient.DeleteSync(ctx, latestPod.Name, metav1.DeleteOptions{}, f.Timeouts.PodDelete)
 	})
 })
 
