@@ -133,16 +133,16 @@ The bug snippet shows the symptom: after the resize patch, `memory.max` at the p
 **Files:**
 - Modify: `test/e2e_node/pod_resize_test.go`
 
-- [ ] Add `should accept resize after the container is OOMKilled and update pod cgroup memory limit` as an `It` inside the same `SIGDescribe` from Task 1.
-- [ ] Skip on cgroup v1 at the top of the `It` via `cgroups.IsPodOnCgroupv2Node` + `e2eskipper.Skipf("cgroup v2 required for pod-level memory.max verification")`.
-- [ ] Construct a guaranteed pod with `RestartPolicy: v1.RestartPolicyAlways`, one container running a workload guaranteed to OOMKill at the chosen limit. Use the busybox `dd`-based command pattern from `oomkiller_linux_test.go:243-272` (`"sleep 5 && dd if=/dev/zero of=/dev/null bs=200M"`). Set `requests.memory == limits.memory == 64Mi`, same for CPU at `100m`.
-- [ ] Call `cgroups.ConfigureHostPathForPodCgroup(testPod)` so pod-level cgroup files are reachable for verification.
-- [ ] Wait for the container to OOMKill and restart enough times that the next backoff window is comfortably long. Concretely: poll until `ContainerStatuses[0].RestartCount >= 4` *and* `ContainerStatuses[0].LastTerminationState.Terminated.Reason == "OOMKilled"` *and* `ContainerStatuses[0].State.Waiting.Reason == "CrashLoopBackOff"`. Use `framework.Gomega().Eventually(...)` with a generous timeout (e.g. 5 minutes — the kubelet backoff grows roughly 10s, 20s, 40s, 80s, ..., so reaching restart 4 takes ~70-150s). This is the moment to issue the patch.
-- [ ] Replicate the `verifyReasonForOOMKilledContainer` tolerance from `oomkiller_linux_test.go:185-203` (some runtimes do not surface the `OOMKilled` reason consistently — containerd issue #8893). Copy the helper into this file rather than refactoring the existing one, to keep blast radius small. Accept either `OOMKilled` reason or `ExitCode == 137` as proof of OOM.
-- [ ] Patch via `resize` subresource using `podresize.MakeResizePatch(original, resized, nil, nil)` and `f.ClientSet.CoreV1().Pods(ns).Patch(ctx, name, types.StrategicMergePatchType, patch, metav1.PatchOptions{}, "resize")`.
-- [ ] Wait for `podresize.WaitForPodResizeActuation` to return — this also confirms the `PodResizeInProgress` / `PodResizePending` conditions clear and `observedGeneration` catches up. Note that with `RestartPolicy: Always`, container restart counts will keep advancing; use `podresize.UpdateExpectedContainerRestarts` (or call it with the live restart count) so expected state is consistent.
-- [ ] Verify pod-spec resources and per-container cgroup values: `podresize.VerifyPodResources(resizedPod, expected, nil)` and `podresize.VerifyPodContainersCgroupValues(ctx, f, resizedPod, expected)`. These are expected to pass.
-- [ ] Verify pod-level cgroup `memory.max` with the `Skipf`-on-failure gate. Use this exact shape:
+- [x] Add `should accept resize after the container is OOMKilled and update pod cgroup memory limit` as an `It` inside the same `SIGDescribe` from Task 1.
+- [x] Skip on cgroup v1 at the top of the `It` via `cgroups.IsPodOnCgroupv2Node` + `e2eskipper.Skipf("cgroup v2 required for pod-level memory.max verification")`.
+- [x] Construct a guaranteed pod with `RestartPolicy: v1.RestartPolicyAlways`, one container running a workload guaranteed to OOMKill at the chosen limit. Use the busybox `dd`-based command pattern from `oomkiller_linux_test.go:243-272` (`"sleep 5 && dd if=/dev/zero of=/dev/null bs=200M"`). Set `requests.memory == limits.memory == 64Mi`, same for CPU at `100m`.
+- [x] Call `cgroups.ConfigureHostPathForPodCgroup(testPod)` so pod-level cgroup files are reachable for verification.
+- [x] Wait for the container to OOMKill and restart enough times that the next backoff window is comfortably long. Concretely: poll until `ContainerStatuses[0].RestartCount >= 4` *and* `ContainerStatuses[0].LastTerminationState.Terminated.Reason == "OOMKilled"` *and* `ContainerStatuses[0].State.Waiting.Reason == "CrashLoopBackOff"`. Use `framework.Gomega().Eventually(...)` with a generous timeout (e.g. 5 minutes — the kubelet backoff grows roughly 10s, 20s, 40s, 80s, ..., so reaching restart 4 takes ~70-150s). This is the moment to issue the patch.
+- [x] Replicate the `verifyReasonForOOMKilledContainer` tolerance from `oomkiller_linux_test.go:185-203` (some runtimes do not surface the `OOMKilled` reason consistently — containerd issue #8893). Copy the helper into this file rather than refactoring the existing one, to keep blast radius small. Accept either `OOMKilled` reason or `ExitCode == 137` as proof of OOM.
+- [x] Patch via `resize` subresource using `podresize.MakeResizePatch(original, resized, nil, nil)` and `f.ClientSet.CoreV1().Pods(ns).Patch(ctx, name, types.StrategicMergePatchType, patch, metav1.PatchOptions{}, "resize")`.
+- [x] Wait for `podresize.WaitForPodResizeActuation` to return — this also confirms the `PodResizeInProgress` / `PodResizePending` conditions clear and `observedGeneration` catches up. Note that with `RestartPolicy: Always`, container restart counts will keep advancing; use `podresize.UpdateExpectedContainerRestarts` (or call it with the live restart count) so expected state is consistent.
+- [x] Verify pod-spec resources and per-container cgroup values: `podresize.VerifyPodResources(resizedPod, expected, nil)` and `podresize.VerifyPodContainersCgroupValues(ctx, f, resizedPod, expected)`. These are expected to pass.
+- [x] Verify pod-level cgroup `memory.max` with the `Skipf`-on-failure gate. Use this exact shape:
       ```go
       // TODO(<bug-link-or-issue>): pod-level cgroup memory.max is not updated after a
       // resize that follows an OOMKill. Once the kubelet fix lands, drop this guard
@@ -152,9 +152,9 @@ The bug snippet shows the symptom: after the resize patch, `memory.max` at the p
       }
       ```
       Import `e2eskipper "k8s.io/kubernetes/test/e2e/framework/skipper"`. Do **not** also skip the earlier per-container cgroup check — that one is expected to pass.
-- [ ] `podClient.DeleteSync` at the end.
-- [ ] Build: `go build ./test/e2e_node/...` clean.
-- [ ] Validate locally with:
+- [x] `podClient.DeleteSync` at the end.
+- [x] Build: `go build ./test/e2e_node/...` clean.
+- [x] Validate locally with:
       ```
       make test-e2e-node FOCUS="Pod InPlace Resize \(node\).*resize after the container is OOMKilled" \
         TEST_ARGS='--kubelet-flags="--fail-swap-on=false"'
@@ -163,4 +163,4 @@ The bug snippet shows the symptom: after the resize patch, `memory.max` at the p
       1. Test passes outright (bug not reproduced on this kubelet build).
       2. Test passes with the pod-cgroup verification gated behind `Skipf` (bug reproduced; skip kicked in).
       Failure outside of the gated assertion is a real bug in the new test — fix it. In particular, if waiting for the backoff window is flaky, increase the `RestartCount` threshold and the `Eventually` timeout rather than abandoning `RestartPolicy: Always`.
-- [ ] Write/update tests (this task is the test addition).
+- [x] Write/update tests (this task is the test addition).
