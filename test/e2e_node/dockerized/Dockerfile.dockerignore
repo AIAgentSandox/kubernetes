@@ -1,0 +1,6 @@
+*
+!test/e2e_node/dockerized/Dockerfile
+!test/e2e_node/dockerized/entrypoint.sh
+!test/e2e_node/dockerized/setup-containerd.sh
+!test/e2e_node/dockerized/wait-for-containerd.sh
+!LICENSE

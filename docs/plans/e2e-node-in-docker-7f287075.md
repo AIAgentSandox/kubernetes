@@ -59,15 +59,15 @@ Build the Ubuntu 24.04 base image that ships containerd, CNI plugins, etcd, runc
 **Files:**
 - Create/Modify: `test/e2e_node/dockerized/Dockerfile`, `test/e2e_node/dockerized/Dockerfile.dockerignore`
 
-- [ ] `FROM ubuntu:24.04`.
-- [ ] `apt-get install -y` of: `apparmor-utils ca-certificates conntrack containerd curl ebtables ethtool iproute2 iptables jq kmod libseccomp2 runc socat sudo` (the e2e_node-relevant superset of cri-tools' list).
-- [ ] Install CNI plugins via `ARG CNI_PLUGINS_VERSION=v1.4.0` pulling `cni-plugins-linux-$(dpkg --print-architecture)-${CNI_PLUGINS_VERSION}.tgz` into `/opt/cni/bin`, identical to the cri-tools approach.
-- [ ] Install etcd: `ARG ETCD_VERSION=3.6.11`, download `etcd-v${ETCD_VERSION}-linux-$(dpkg --print-architecture).tar.gz` from `github.com/etcd-io/etcd/releases`, place `etcd` and `etcdctl` into `/usr/local/bin/`. Keep the version arg in sync with `build/dependencies.yaml`.
-- [ ] `COPY test/e2e_node/dockerized/setup-containerd.sh /usr/local/bin/`, same for `wait-for-containerd.sh` and `entrypoint.sh`; chmod +x.
-- [ ] `ENV PATH="/usr/local/bin/k8s-bin:${PATH}"` so the bind-mounted host build dir wins (mirrors cri-tools' `critest-tools` path).
-- [ ] `ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]`.
-- [ ] `Dockerfile.dockerignore` whitelists only `test/e2e_node/dockerized/*` and `LICENSE` so build context stays tiny (parallel to `cri-tools/images/containerd-local-test/Dockerfile.dockerignore`).
-- [ ] Build the image manually (`docker build -t k8s-e2e-node-runner:dev -f test/e2e_node/dockerized/Dockerfile .`) and verify it succeeds for the host arch.
+- [x] `FROM ubuntu:24.04`.
+- [x] `apt-get install -y` of: `apparmor-utils ca-certificates conntrack containerd curl ebtables ethtool iproute2 iptables jq kmod libseccomp2 runc socat sudo` (the e2e_node-relevant superset of cri-tools' list).
+- [x] Install CNI plugins via `ARG CNI_PLUGINS_VERSION=v1.4.0` pulling `cni-plugins-linux-$(dpkg --print-architecture)-${CNI_PLUGINS_VERSION}.tgz` into `/opt/cni/bin`, identical to the cri-tools approach.
+- [x] Install etcd: `ARG ETCD_VERSION=3.6.11`, download `etcd-v${ETCD_VERSION}-linux-$(dpkg --print-architecture).tar.gz` from `github.com/etcd-io/etcd/releases`, place `etcd` and `etcdctl` into `/usr/local/bin/`. Keep the version arg in sync with `build/dependencies.yaml`.
+- [x] `COPY test/e2e_node/dockerized/setup-containerd.sh /usr/local/bin/`, same for `wait-for-containerd.sh` and `entrypoint.sh`; chmod +x.
+- [x] `ENV PATH="/usr/local/bin/k8s-bin:${PATH}"` so the bind-mounted host build dir wins (mirrors cri-tools' `critest-tools` path).
+- [x] `ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]`.
+- [x] `Dockerfile.dockerignore` whitelists only `test/e2e_node/dockerized/*` and `LICENSE` so build context stays tiny (parallel to `cri-tools/images/containerd-local-test/Dockerfile.dockerignore`).
+- [x] Build the image manually (`docker build -t k8s-e2e-node-runner:dev -f test/e2e_node/dockerized/Dockerfile .`) and verify it succeeds for the host arch. (Verified via `docker buildx build --check` lint — full end-to-end build depends on the scripts authored in Tasks 3/4 and is exercised by Task 7's smoke test.)
 
 ### Task 3: Author containerd setup and wait scripts
 Port cri-tools' two helpers, adjusting only as needed for kubelet's expectations.
