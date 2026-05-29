@@ -229,6 +229,10 @@ define TEST_E2E_NODE_HELP_INFO
 #  RUN_UNTIL_FAILURE: If true, pass --until-it-fails=true to ginkgo so tests are run
 #    repeatedly until they fail.  Defaults to false.
 #  REMOTE: If true, run the tests on a remote host.  Defaults to false.
+#  DOCKER: If true (REMOTE=false only), run the local node-e2e flow inside a
+#    privileged Ubuntu container that ships containerd, CNI plugins, runc, and
+#    etcd. Reuses pre-built binaries from _output/local/go/bin on Linux hosts.
+#    See test/e2e_node/dockerized/README.md.  Defaults to false.
 #  REMOTE_MODE: For REMOTE=true only.  Mode for remote execution (eg. gce, ssh).
 #    If set to "gce", an instance can be provisioned or reused from GCE. If set
 #    to "ssh", provided `HOSTS` must be IPs or resolvable.  Defaults to "gce".

@@ -44,6 +44,11 @@ parallelism=${PARALLELISM:-8}
 artifacts="${ARTIFACTS:-"/tmp/_artifacts/$(date +%y%m%dT%H%M%S)"}"
 remote=${REMOTE:-"false"}
 remote_mode=${REMOTE_MODE:-"gce"}
+docker_mode=${DOCKER:-"false"}
+if [ "${remote}" = true ] && [ "${docker_mode}" = true ]; then
+  echo "DOCKER=true is only supported in local mode (REMOTE=false)."
+  exit 1
+fi
 container_runtime_endpoint=${CONTAINER_RUNTIME_ENDPOINT:-"unix:///run/containerd/containerd.sock"}
 image_service_endpoint=${IMAGE_SERVICE_ENDPOINT:-""}
 run_until_failure=${RUN_UNTIL_FAILURE:-"false"}
@@ -256,6 +261,23 @@ elif [ "${remote}" = true ] && [ "${remote_mode}" = ssh ] ; then
   exit $?
 
 else
+  # Use cluster.local as default dns-domain
+  test_args='--dns-domain="'${KUBE_DNS_DOMAIN:-cluster.local}'" '${test_args}
+  test_args='--kubelet-flags="--cluster-domain='${KUBE_DNS_DOMAIN:-cluster.local}'" '${test_args}
+
+  if [ "${docker_mode}" = true ]; then
+    export FOCUS SKIP LABEL_FILTER TEST_ARGS PARALLELISM RUNTIME_CONFIG EXTRA_ENVS SYSTEM_SPEC_NAME E2E_TEST_DEBUG_TOOL
+    export ARTIFACTS="${artifacts}"
+    export KUBELET_CONFIG_FILE="${kubelet_config_file}"
+    export TEST_ARGS="${test_args}"
+    export CONTAINER_RUNTIME_ENDPOINT="${container_runtime_endpoint}"
+    : "${TIMEOUT:=}"
+    export TIMEOUT
+    : "${IMAGE_TAG:=}"
+    export IMAGE_TAG
+    exec "${KUBE_ROOT}/hack/run-e2e-node-container.sh"
+  fi
+
   # Refresh sudo credentials if needed
   if ping -c 1 -q metadata.google.internal &> /dev/null; then
     echo 'Running on GCE, not asking for sudo credentials'
@@ -272,9 +294,6 @@ else
   fi
 
 
-  # Use cluster.local as default dns-domain
-  test_args='--dns-domain="'${KUBE_DNS_DOMAIN:-cluster.local}'" '${test_args}
-  test_args='--kubelet-flags="--cluster-domain='${KUBE_DNS_DOMAIN:-cluster.local}'" '${test_args}
   # Test using the host the script was run on
   # Provided for backwards compatibility
   go run test/e2e_node/runner/local/run_local.go \

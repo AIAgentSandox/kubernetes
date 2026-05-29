@@ -46,12 +46,12 @@ Wire a new top-level branch into the existing local-mode dispatcher so that `mak
 **Files:**
 - Create/Modify: `hack/make-rules/test-e2e-node.sh`, `Makefile`
 
-- [ ] In `hack/make-rules/test-e2e-node.sh`, read `docker_mode=${DOCKER:-"false"}` near the other env reads (around line 45).
-- [ ] Reject the unsupported combo `REMOTE=true` + `DOCKER=true` with a clear error before any branching.
-- [ ] In the `else` (local) branch, when `docker_mode == "true"` skip the sudo-credential preamble and `exec` `KUBE_ROOT/hack/run-e2e-node-container.sh`, forwarding `FOCUS`, `SKIP`, `LABEL_FILTER`, `TEST_ARGS`, `PARALLELISM`, `ARTIFACTS`, `KUBELET_CONFIG_FILE`, `RUNTIME_CONFIG`, `EXTRA_ENVS`, `SYSTEM_SPEC_NAME`, `TIMEOUT`, `E2E_TEST_DEBUG_TOOL`, `IMAGE_TAG`, and `CONTAINER_RUNTIME_ENDPOINT` via environment.
-- [ ] Otherwise (i.e. `DOCKER=false`) fall through to the unchanged `go run test/e2e_node/runner/local/run_local.go` invocation.
-- [ ] In `Makefile`, append a `DOCKER:` bullet to `TEST_E2E_NODE_HELP_INFO` (between the `REMOTE` and `REMOTE_MODE` lines) describing the new flag and noting it is local-mode only.
-- [ ] Run `hack/verify-shellcheck.sh hack/make-rules/test-e2e-node.sh` and confirm the help output via `make test-e2e-node PRINT_HELP=y`.
+- [x] In `hack/make-rules/test-e2e-node.sh`, read `docker_mode=${DOCKER:-"false"}` near the other env reads (around line 45).
+- [x] Reject the unsupported combo `REMOTE=true` + `DOCKER=true` with a clear error before any branching.
+- [x] In the `else` (local) branch, when `docker_mode == "true"` skip the sudo-credential preamble and `exec` `KUBE_ROOT/hack/run-e2e-node-container.sh`, forwarding `FOCUS`, `SKIP`, `LABEL_FILTER`, `TEST_ARGS`, `PARALLELISM`, `ARTIFACTS`, `KUBELET_CONFIG_FILE`, `RUNTIME_CONFIG`, `EXTRA_ENVS`, `SYSTEM_SPEC_NAME`, `TIMEOUT`, `E2E_TEST_DEBUG_TOOL`, `IMAGE_TAG`, and `CONTAINER_RUNTIME_ENDPOINT` via environment.
+- [x] Otherwise (i.e. `DOCKER=false`) fall through to the unchanged `go run test/e2e_node/runner/local/run_local.go` invocation.
+- [x] In `Makefile`, append a `DOCKER:` bullet to `TEST_E2E_NODE_HELP_INFO` (between the `REMOTE` and `REMOTE_MODE` lines) describing the new flag and noting it is local-mode only.
+- [x] Run `hack/verify-shellcheck.sh hack/make-rules/test-e2e-node.sh` and confirm the help output via `make test-e2e-node PRINT_HELP=y`.
 
 ### Task 2: Author the e2e-node runner image (`Dockerfile` + ignore)
 Build the Ubuntu 24.04 base image that ships containerd, CNI plugins, etcd, runc, and the cgroup/containerd glue scripts. Modeled directly on `~/src/k8s.io/cri-tools/images/containerd-local-test/Dockerfile`, but pinned to **Ubuntu 24.04** (per the task description; cri-tools currently uses `ubuntu:26.04` — keep that divergence intentional) and the K8s `ETCD_VERSION`.
