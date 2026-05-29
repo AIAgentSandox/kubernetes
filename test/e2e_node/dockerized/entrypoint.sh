@@ -31,13 +31,16 @@
 
 set -euo pipefail
 
-# In cgroup v2, the root cgroup cannot host processes if we want to write
-# cgroup.subtree_control. Move our shell into an init sub-cgroup before
-# setup-containerd.sh tries to enable subtree controllers on /.
-if [ -f /sys/fs/cgroup/cgroup.controllers ]; then
-    mkdir -p /sys/fs/cgroup/init
-    echo 0 > /sys/fs/cgroup/init/cgroup.procs
+# cgroup v2 is required. The root cgroup cannot host processes if we want
+# to write cgroup.subtree_control, so move our shell into an init
+# sub-cgroup before setup-containerd.sh enables subtree controllers on /.
+if [ ! -f /sys/fs/cgroup/cgroup.controllers ]; then
+    echo "ERROR: cgroup v2 unified hierarchy is required (cgroup.controllers missing)." >&2
+    echo "       DOCKER=true mode does not support cgroup v1 hosts." >&2
+    exit 1
 fi
+mkdir -p /sys/fs/cgroup/init
+echo 0 > /sys/fs/cgroup/init/cgroup.procs
 
 echo "Initializing container environment..."
 setup-containerd.sh
@@ -60,16 +63,19 @@ trap cleanup EXIT
 
 wait-for-containerd.sh
 
-# If the caller pointed KUBELET_CONFIG_FILE at a host path that does not
-# exist inside the bind-mounted source tree, surface a clear error early
-# rather than letting run_local.go fail mid-test.
+cd /go/src/k8s.io/kubernetes
+
+# If the caller pointed KUBELET_CONFIG_FILE at a path that does not exist
+# inside the bind-mounted source tree, surface a clear error early rather
+# than letting run_local.go fail mid-test. The dispatcher's default value
+# is a repo-relative path, so resolve it against the source root we just
+# cd'd into.
 if [ -n "${KUBELET_CONFIG_FILE:-}" ] && [ ! -e "${KUBELET_CONFIG_FILE}" ]; then
     echo "ERROR: KUBELET_CONFIG_FILE=${KUBELET_CONFIG_FILE} does not exist inside the container." >&2
     echo "       It must be a path under the bind-mounted source tree." >&2
     exit 1
 fi
 
-cd /go/src/k8s.io/kubernetes
 echo "Executing: $*"
 # Run (don't exec) so the EXIT trap above can stop containerd and we can
 # propagate the test command's exit code. Tests routinely exit non-zero;

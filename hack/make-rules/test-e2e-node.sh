@@ -49,6 +49,10 @@ if [ "${remote}" = true ] && [ "${docker_mode}" = true ]; then
   echo "DOCKER=true is only supported in local mode (REMOTE=false)."
   exit 1
 fi
+if [ "${docker_mode}" = true ] && [ -n "${E2E_TEST_DEBUG_TOOL:-}" ]; then
+  echo "DOCKER=true does not support E2E_TEST_DEBUG_TOOL=${E2E_TEST_DEBUG_TOOL}; the image does not ship delve/gdb."
+  exit 1
+fi
 container_runtime_endpoint=${CONTAINER_RUNTIME_ENDPOINT:-"unix:///run/containerd/containerd.sock"}
 image_service_endpoint=${IMAGE_SERVICE_ENDPOINT:-""}
 run_until_failure=${RUN_UNTIL_FAILURE:-"false"}
@@ -266,11 +270,12 @@ else
   test_args='--kubelet-flags="--cluster-domain='${KUBE_DNS_DOMAIN:-cluster.local}'" '${test_args}
 
   if [ "${docker_mode}" = true ]; then
-    export FOCUS SKIP LABEL_FILTER TEST_ARGS PARALLELISM RUNTIME_CONFIG EXTRA_ENVS SYSTEM_SPEC_NAME E2E_TEST_DEBUG_TOOL
+    export FOCUS SKIP LABEL_FILTER TEST_ARGS PARALLELISM RUNTIME_CONFIG EXTRA_ENVS SYSTEM_SPEC_NAME
     export ARTIFACTS="${artifacts}"
     export KUBELET_CONFIG_FILE="${kubelet_config_file}"
     export TEST_ARGS="${test_args}"
     export CONTAINER_RUNTIME_ENDPOINT="${container_runtime_endpoint}"
+    export RUN_UNTIL_FAILURE="${run_until_failure}"
     : "${TIMEOUT:=}"
     export TIMEOUT
     : "${IMAGE_TAG:=}"

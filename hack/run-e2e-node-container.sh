@@ -19,10 +19,10 @@
 # This is the implementation behind `make test-e2e-node DOCKER=true`. The
 # Makefile / hack/make-rules/test-e2e-node.sh dispatcher exports FOCUS,
 # SKIP, LABEL_FILTER, TEST_ARGS, PARALLELISM, ARTIFACTS, KUBELET_CONFIG_FILE,
-# RUNTIME_CONFIG, EXTRA_ENVS, SYSTEM_SPEC_NAME, TIMEOUT, E2E_TEST_DEBUG_TOOL,
+# RUNTIME_CONFIG, EXTRA_ENVS, SYSTEM_SPEC_NAME, TIMEOUT, RUN_UNTIL_FAILURE,
 # IMAGE_TAG and CONTAINER_RUNTIME_ENDPOINT before exec'ing this script. We
-# rebuild the ginkgo flag string from FOCUS/SKIP/LABEL_FILTER/PARALLELISM
-# because the upstream script keeps that string in a local variable.
+# rebuild the ginkgo flag string from those inputs because the upstream
+# script keeps it in a local variable.
 #
 # Modeled on cri-tools' hack/run-e2e-container.sh.
 
@@ -125,6 +125,9 @@ for bin in "${required_bins[@]}"; do
 done
 
 # --- Image build ------------------------------------------------------------
+# BuildKit is required so the per-Dockerfile `Dockerfile.dockerignore` is
+# honored; on a legacy builder the entire repo would be sent as build context.
+export DOCKER_BUILDKIT=1
 if [[ "${skip_image_build}" == "true" ]]; then
   kube::log::status "SKIP_IMAGE_BUILD=true; using existing image ${image_tag}"
 else
@@ -143,11 +146,14 @@ if [[ -n "${label_filter}" ]]; then
 else
   skip="${SKIP-"\[Flaky\]|\[Slow\]|\[Serial\]"}"
 fi
-parallelism="${PARALLELISM:-8}"
 
-ginkgoflags="-timeout=24h"
-if [[ "${parallelism}" -gt 1 ]]; then
-  ginkgoflags="${ginkgoflags} -nodes=${parallelism} "
+# Honor TIMEOUT if the caller set it; otherwise keep the historical 24h
+# ceiling used by the local/remote paths.
+ginkgoflags="-timeout=${TIMEOUT:-24h}"
+# Only set -nodes when PARALLELISM is explicitly provided. Matches the
+# non-DOCKER local path which lets ginkgo pick its default (cores - 1).
+if [[ -n "${PARALLELISM:-}" && "${PARALLELISM}" -gt 1 ]]; then
+  ginkgoflags="${ginkgoflags} -nodes=${PARALLELISM} "
 fi
 if [[ -n "${focus}" ]]; then
   ginkgoflags="${ginkgoflags} -focus=\"${focus}\" "
@@ -157,6 +163,9 @@ if [[ -n "${skip}" ]]; then
 fi
 if [[ -n "${label_filter}" ]]; then
   ginkgoflags="${ginkgoflags} --label-filter=\"${label_filter}\" "
+fi
+if [[ "${RUN_UNTIL_FAILURE:-false}" == "true" ]]; then
+  ginkgoflags="${ginkgoflags} --until-it-fails=true "
 fi
 
 # --- Optional host bind-mounts ----------------------------------------------
@@ -219,5 +228,7 @@ docker run --rm --privileged \
   "${image_tag}" \
   bash -c "${inner_cmd}" 2>&1 | tee -i "${artifacts}/build-log.txt"
 
-# tee swallows the docker exit code; recover it from PIPESTATUS.
+# `pipefail` already propagates a docker-run failure; this explicit exit
+# only reasserts the docker exit code (PIPESTATUS[0]) on the success path
+# for symmetry with the local/remote branches in test-e2e-node.sh.
 exit "${PIPESTATUS[0]}"

@@ -16,10 +16,14 @@ SIG-Node tools stay aligned.
 ## Host prerequisites
 
 - Docker (any recent version that supports `--privileged --cgroupns=host`).
-- A Linux kernel with the cgroup v2 unified hierarchy. The entrypoint also
-  tolerates cgroup v1 for completeness, but cgroup v2 is what is exercised
-  in CI.
+- A Linux kernel with the cgroup v2 unified hierarchy. cgroup v1 is not
+  supported — the entrypoint's cgroup pre-flight is gated on
+  `/sys/fs/cgroup/cgroup.controllers` and containerd is configured for v2
+  only.
 - Sufficient privilege to run `docker run --privileged`.
+- Outbound network access to `github.com` (CNI plugin + etcd release
+  downloads) during the first `docker build`. Subsequent runs can use
+  `SKIP_IMAGE_BUILD=true`.
 
 No host install of containerd, CNI plugins, runc, or etcd is required —
 those live inside the image.
@@ -69,17 +73,20 @@ In addition to the regular `make test-e2e-node` env vars (forwarded by
 | `FOCUS` | `""` | Ginkgo focus regex. |
 | `SKIP` | `\[Flaky\]\|\[Slow\]\|\[Serial\]` (when `LABEL_FILTER` is empty) | Ginkgo skip regex. |
 | `LABEL_FILTER` | `""` | Ginkgo label query. |
+| `PARALLELISM` | unset → ginkgo default (`cores - 1`) | Forwarded as ginkgo `-nodes` when set to a value > 1. |
+| `RUN_UNTIL_FAILURE` | `false` | Adds ginkgo `--until-it-fails=true` when `true`. |
+| `TIMEOUT` | `24h` | Replaces the ginkgo `-timeout` value. |
 | `TEST_ARGS` | `""` | Extra flags forwarded to `e2e_node.test`. |
-| `KUBELET_CONFIG_FILE` | `test/e2e_node/jenkins/default-kubelet-config.yaml` | Path (inside the bind-mounted source tree) to the kubelet config. |
+| `KUBELET_CONFIG_FILE` | `test/e2e_node/jenkins/default-kubelet-config.yaml` | Path (inside the bind-mounted source tree) to the kubelet config. Must resolve under `/go/src/k8s.io/kubernetes`. |
 | `ARTIFACTS` | `/tmp/_artifacts/<timestamp>` | Host directory mounted at `/var/result` for junit / logs. |
 | `IMAGE_TAG` | `k8s-e2e-node-runner:dev` | Tag used by `docker build` / `docker run`. |
 | `SKIP_IMAGE_BUILD` | `false` | If `true`, skip `docker build` and reuse the existing tag. Useful for iterating on tests. |
 | `USE_DOCKERIZED_BUILD` | auto | Force the dockerized cross-build even on a matching Linux host. |
 | `TARGET_BUILD_ARCH` | `linux/amd64` | Target arch for the dockerized build path. |
 
-`E2E_TEST_DEBUG_TOOL=dlv` / `gdb` is **not** supported in `DOCKER=true` in
-this first iteration — the dispatcher will run normally but the image
-does not ship `delve`. Track it in the plan if you need it.
+`E2E_TEST_DEBUG_TOOL=dlv` / `gdb` is **not** supported in `DOCKER=true` —
+the image does not ship `delve` or `gdb`, so the dispatcher rejects the
+combination up-front with a clear error.
 
 ## Persistent containerd state
 
