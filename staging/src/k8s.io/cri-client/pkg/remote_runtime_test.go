@@ -25,12 +25,9 @@ import (
 
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
-	oteltrace "go.opentelemetry.io/otel/trace"
-	"go.opentelemetry.io/otel/trace/noop"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	internalapi "k8s.io/cri-api/pkg/apis"
 	apitest "k8s.io/cri-api/pkg/apis/testing"
 	fakeremote "k8s.io/cri-client/pkg/fake"
 	"k8s.io/cri-client/pkg/util"
@@ -51,21 +48,6 @@ func createAndStartFakeRemoteRuntime(t *testing.T) (*fakeremote.RemoteRuntime, s
 	return fakeRuntime, endpoint
 }
 
-func createRemoteRuntimeService(ctx context.Context, endpoint string, t *testing.T) internalapi.RuntimeService {
-	runtimeService, err := NewRemoteRuntimeService(ctx, endpoint, defaultConnectionTimeout, noop.NewTracerProvider(), false)
-
-	require.NoError(t, err)
-
-	return runtimeService
-}
-
-func createRemoteRuntimeServiceWithTracerProvider(ctx context.Context, endpoint string, tp oteltrace.TracerProvider, t *testing.T) internalapi.RuntimeService {
-	runtimeService, err := NewRemoteRuntimeService(ctx, endpoint, defaultConnectionTimeout, tp, false)
-	require.NoError(t, err)
-
-	return runtimeService
-}
-
 func TestGetSpans(t *testing.T) {
 	fakeRuntime, endpoint := createAndStartFakeRemoteRuntime(t)
 	defer func() {
@@ -82,8 +64,13 @@ func TestGetSpans(t *testing.T) {
 		sdktrace.WithBatcher(exp),
 	)
 	ctx := context.Background()
-	rtSvc := createRemoteRuntimeServiceWithTracerProvider(ctx, endpoint, tp, t)
-	_, err := rtSvc.Version(ctx, apitest.FakeVersion)
+	rtSvc, err := NewRemoteRuntimeServiceBuilder().
+		WithEndpoint(endpoint).
+		WithConnectionTimeout(defaultConnectionTimeout).
+		WithTracerProvider(tp).
+		Build(ctx)
+	require.NoError(t, err)
+	_, err = rtSvc.Version(ctx, apitest.FakeVersion)
 	require.NoError(t, err)
 	err = tp.ForceFlush(ctx)
 	require.NoError(t, err)
@@ -103,7 +90,11 @@ func TestVersion(t *testing.T) {
 	}()
 
 	ctx := context.Background()
-	rtSvc := createRemoteRuntimeService(ctx, endpoint, t)
+	rtSvc, err := NewRemoteRuntimeServiceBuilder().
+		WithEndpoint(endpoint).
+		WithConnectionTimeout(defaultConnectionTimeout).
+		Build(ctx)
+	require.NoError(t, err)
 	version, err := rtSvc.Version(ctx, apitest.FakeVersion)
 	require.NoError(t, err)
 	assert.Equal(t, apitest.FakeVersion, version.Version)
@@ -129,7 +120,11 @@ func TestNewRemoteRuntimeServiceUnixSocketEndpoint(t *testing.T) {
 	}()
 
 	ctx := context.Background()
-	rtSvc := createRemoteRuntimeService(ctx, endpoint, t)
+	rtSvc, err := NewRemoteRuntimeServiceBuilder().
+		WithEndpoint(endpoint).
+		WithConnectionTimeout(defaultConnectionTimeout).
+		Build(ctx)
+	require.NoError(t, err)
 	version, err := rtSvc.Version(ctx, apitest.FakeVersion)
 	require.NoError(t, err)
 	assert.Equal(t, apitest.FakeVersion, version.Version)
