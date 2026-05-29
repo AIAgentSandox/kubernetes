@@ -102,15 +102,15 @@ The user-facing wrapper: builds the runner image, ensures binaries exist, and in
 **Files:**
 - Create/Modify: `hack/run-e2e-node-container.sh`
 
-- [ ] `set -euo pipefail`; `KUBE_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)`; `source "${KUBE_ROOT}/hack/lib/init.sh"` so `kube::golang::setup_env` and `kube::log` helpers are available.
-- [ ] Determine the binary directory:
+- [x] `set -euo pipefail`; `KUBE_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)`; `source "${KUBE_ROOT}/hack/lib/init.sh"` so `kube::golang::setup_env` and `kube::log` helpers are available.
+- [x] Determine the binary directory:
   - On Linux + matching arch: prefer `_output/local/go/bin` (reuse already-built binaries per task description). If the required binaries (`e2e_node.test`, `ginkgo`, `kubelet`, `mounter`, `gcp-credential-provider`) are missing, run `make WHAT='cmd/kubelet test/e2e_node/e2e_node.test github.com/onsi/ginkgo/v2/ginkgo cluster/gce/gci/mounter test/e2e_node/plugins/gcp-credential-provider' KUBE_BUILD_PLATFORMS=linux/amd64` from `KUBE_ROOT` first.
   - On non-Linux (macOS) or when `USE_DOCKERIZED_BUILD=true`: invoke `build/run.sh make WHAT=… KUBE_BUILD_PLATFORMS=linux/amd64` and point `BIN_DIR` at `_output/dockerized/bin/linux/${ARCH}` (this is the path already returned by `test/utils/paths.go::GetK8sBuildOutputDir`).
-- [ ] Build the image: `IMAGE_TAG=${IMAGE_TAG:-k8s-e2e-node-runner:dev}`; `docker build -t "${IMAGE_TAG}" -f test/e2e_node/dockerized/Dockerfile .`. Skip the build if `SKIP_IMAGE_BUILD=true`.
-- [ ] Compose the inner command string: `go run test/e2e_node/runner/local/run_local.go --build-dependencies=false --k8s-bin-dir=/usr/local/bin/k8s-bin --ginkgo-flags="${GINKGO_FLAGS}" --test-flags="--v 4 --report-dir=/var/result --node-name $(hostname) ${TEST_ARGS}" --kubelet-config-file="${KUBELET_CONFIG_FILE}" --runtime-config="${RUNTIME_CONFIG}" --extra-envs="${EXTRA_ENVS}" --system-spec-name="${SYSTEM_SPEC_NAME}"`. (We invoke `go run` rather than copying a pre-built runner because the runner itself is trivial and avoids needing yet another mounted binary; the container has `golang-go` from apt or we add it via the Dockerfile if `go run` is desired — alternative below.)
-- [ ] **Alternative for the inner command** (preferred to avoid putting Go in the image): pre-build a small `e2e_node_runner` binary as part of Task 1's build list and invoke it directly. Decide between these in the Questions section below.
-- [ ] Build optional mount list (mirror cri-tools): `/lib/modules:ro`, `/etc/apparmor.d:ro` if those exist on host.
-- [ ] `docker run` invocation:
+- [x] Build the image: `IMAGE_TAG=${IMAGE_TAG:-k8s-e2e-node-runner:dev}`; `docker build -t "${IMAGE_TAG}" -f test/e2e_node/dockerized/Dockerfile .`. Skip the build if `SKIP_IMAGE_BUILD=true`.
+- [x] Compose the inner command string: `go run test/e2e_node/runner/local/run_local.go --build-dependencies=false --k8s-bin-dir=/usr/local/bin/k8s-bin --ginkgo-flags="${GINKGO_FLAGS}" --test-flags="--v 4 --report-dir=/var/result --node-name $(hostname) ${TEST_ARGS}" --kubelet-config-file="${KUBELET_CONFIG_FILE}" --runtime-config="${RUNTIME_CONFIG}" --extra-envs="${EXTRA_ENVS}" --system-spec-name="${SYSTEM_SPEC_NAME}"`. (Implemented as the Option B variant; see next checkbox. The composed string lives inside a single-quoted `inner_cmd` so the container's bash expands env vars and `$(hostname)` at runtime, not the host's.)
+- [x] **Alternative for the inner command** (preferred to avoid putting Go in the image): pre-build a small `e2e_node_runner` binary as part of Task 1's build list and invoke it directly. Decide between these in the Questions section below. (Chose Option B per Question 2. Added `test/e2e_node/runner/local` to the WHAT list; the binary is named `local` after its package directory and is invoked by absolute path `/usr/local/bin/k8s-bin/local` so the bash builtin never interferes.)
+- [x] Build optional mount list (mirror cri-tools): `/lib/modules:ro`, `/etc/apparmor.d:ro` if those exist on host.
+- [x] `docker run` invocation:
   ```
   docker run --rm --privileged \
     --cgroupns=host \
@@ -124,8 +124,9 @@ The user-facing wrapper: builds the runner image, ensures binaries exist, and in
     "${IMAGE_TAG}" \
     bash -c "${INNER_CMD}"
   ```
-- [ ] Pipe output to `${ARTIFACTS}/build-log.txt` analogously to the existing dispatcher.
-- [ ] `hack/verify-shellcheck.sh hack/run-e2e-node-container.sh`.
+  (Implemented; also sets `--hostname e2e-node-runner` and forwards `KUBE_ROOT`, `KUBELET_CONFIG_FILE`, and the per-runner `E2E_*` env vars consumed by `inner_cmd` so embedded regex quoting in FOCUS/SKIP survives both shells.)
+- [x] Pipe output to `${ARTIFACTS}/build-log.txt` analogously to the existing dispatcher. (`2>&1 | tee -i "${artifacts}/build-log.txt"`; exit code recovered from `PIPESTATUS[0]` so docker failures still propagate.)
+- [x] `hack/verify-shellcheck.sh hack/run-e2e-node-container.sh`. (Required one `# shellcheck disable=SC2016` comment above the single-quoted `inner_cmd` because the inner `${...}` and `$(hostname)` are intentionally container-side expansions.)
 
 ### Task 6: README / docs
 Document the new flow next to the image, and reference it from `test/e2e_node/README.md`.
