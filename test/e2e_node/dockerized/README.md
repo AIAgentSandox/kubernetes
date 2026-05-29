@@ -28,6 +28,15 @@ SIG-Node tools stay aligned.
 No host install of containerd, CNI plugins, runc, or etcd is required —
 those live inside the image.
 
+> **Warning — host cgroup conflicts.** The runner uses
+> `--cgroupns=host` and the bundled kubelet config sets `cgroupRoot: /`,
+> so the in-container kubelet writes pod cgroups under the host's cgroup
+> tree. On a workstation that is also running another kubelet, kind,
+> minikube, k3s, or Docker Desktop, those processes will fight over
+> `/sys/fs/cgroup/kubepods*` and `kubeReserved`/`systemReserved` may
+> push host services around. Use `DOCKER=true` on dedicated/CI hosts
+> or after stopping any other kubelet/runtime on the host.
+
 ## What happens when you run it
 
 `hack/make-rules/test-e2e-node.sh` dispatches `DOCKER=true` to
@@ -90,12 +99,16 @@ combination up-front with a clear error.
 
 ## Persistent containerd state
 
-Container images pulled by kubelet are kept in the named Docker volume
-`k8s-e2e-node-containerd` (mounted at `/var/lib/containerd`). Subsequent
-runs skip the image pull. To wipe it:
+Container images pulled by kubelet are kept in a named Docker volume
+mounted at `/var/lib/containerd`. The volume name is scoped to the
+runner image tag (`k8s-e2e-node-containerd-<sanitized IMAGE_TAG>`) so
+concurrent runs with different `IMAGE_TAG`s don't clobber each other's
+containerd BoltDB. Subsequent runs with the same `IMAGE_TAG` skip the
+image pull. To wipe it:
 
 ```
-docker volume rm k8s-e2e-node-containerd
+docker volume ls --filter name=k8s-e2e-node-containerd-
+docker volume rm <volume>
 ```
 
 ## Dropping into the container manually
@@ -106,7 +119,7 @@ For ad-hoc debugging:
 docker run --rm -it --privileged --cgroupns=host \
   -v "$(pwd):/go/src/k8s.io/kubernetes:rw" \
   -v "$(pwd)/_output/local/go/bin:/usr/local/bin/k8s-bin:ro" \
-  -v "k8s-e2e-node-containerd:/var/lib/containerd" \
+  -v "k8s-e2e-node-containerd-k8s-e2e-node-runner_dev:/var/lib/containerd" \
   --entrypoint bash \
   k8s-e2e-node-runner:dev
 ```

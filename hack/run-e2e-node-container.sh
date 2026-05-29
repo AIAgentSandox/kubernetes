@@ -50,6 +50,12 @@ target_arch="${TARGET_BUILD_ARCH:-linux/amd64}"
 artifacts="${ARTIFACTS:?ARTIFACTS must be set (hack/make-rules/test-e2e-node.sh exports it)}"
 mkdir -p "${artifacts}"
 
+# Mirror the local/remote branches in test-e2e-node.sh by capturing
+# everything — binary build, image build, and the docker run — into
+# build-log.txt. Without this, image-build / make failures vanish from
+# the artifacts directory and CI scraping has nothing to show.
+exec > >(tee -i "${artifacts}/build-log.txt") 2>&1
+
 # --- Build mode selection ---------------------------------------------------
 #
 # - Linux + host arch matches the target arch: reuse _output/local/go/bin.
@@ -133,6 +139,13 @@ done
 # TARGET_BUILD_ARCH=linux/arm64 on an amd64 host.
 export DOCKER_BUILDKIT=1
 if [[ "${skip_image_build}" == "true" ]]; then
+  # Fast-fail if the user asked us to skip the build but the image isn't
+  # actually present; otherwise `docker run` below fails ~100 lines later
+  # with a confusing "Unable to find image locally" message.
+  if ! docker image inspect "${image_tag}" >/dev/null 2>&1; then
+    kube::log::error "SKIP_IMAGE_BUILD=true but image ${image_tag} not found locally; unset SKIP_IMAGE_BUILD or build/pull the image first."
+    exit 1
+  fi
   kube::log::status "SKIP_IMAGE_BUILD=true; using existing image ${image_tag}"
 else
   kube::log::status "Building runner image ${image_tag} (platform=${target_arch})"
@@ -188,6 +201,11 @@ fi
 # container.
 container_hostname="e2e-node-runner"
 
+# Scope the containerd state volume to the image tag. A shared volume across
+# concurrent `make test-e2e-node DOCKER=true` invocations would let two
+# containerd instances clobber the same BoltDB / image store.
+containerd_volume="k8s-e2e-node-containerd-$(echo "${image_tag}" | tr -c 'a-zA-Z0-9._-' '_')"
+
 # --- Docker run -------------------------------------------------------------
 #
 # The container's bash receives the inner command verbatim (single-quoted on
@@ -227,13 +245,10 @@ docker run --rm --privileged \
   -e E2E_SYSTEM_SPEC_NAME="${SYSTEM_SPEC_NAME:-}" \
   -v "${KUBE_ROOT}:/go/src/k8s.io/kubernetes:rw" \
   -v "${bin_dir}:/usr/local/bin/k8s-bin:ro" \
-  -v "k8s-e2e-node-containerd:/var/lib/containerd" \
+  -v "${containerd_volume}:/var/lib/containerd" \
   -v "${artifacts}:/var/result" \
   "${optional_mounts[@]}" \
   "${image_tag}" \
-  bash -c "${inner_cmd}" 2>&1 | tee -i "${artifacts}/build-log.txt"
-
-# `pipefail` already propagates a docker-run failure; this explicit exit
-# only reasserts the docker exit code (PIPESTATUS[0]) on the success path
-# for symmetry with the local/remote branches in test-e2e-node.sh.
-exit "${PIPESTATUS[0]}"
+  bash -c "${inner_cmd}"
+# errexit propagates a non-zero docker-run exit code; the global `exec`
+# redirect above already captures the output to build-log.txt.

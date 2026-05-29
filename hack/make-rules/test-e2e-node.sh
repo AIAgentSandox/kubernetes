@@ -53,8 +53,17 @@ if [ "${docker_mode}" = true ] && [ -n "${E2E_TEST_DEBUG_TOOL:-}" ]; then
   echo "DOCKER=true does not support E2E_TEST_DEBUG_TOOL=${E2E_TEST_DEBUG_TOOL}; the image does not ship delve/gdb."
   exit 1
 fi
-container_runtime_endpoint=${CONTAINER_RUNTIME_ENDPOINT:-"unix:///run/containerd/containerd.sock"}
-image_service_endpoint=${IMAGE_SERVICE_ENDPOINT:-""}
+if [ "${docker_mode}" = true ]; then
+  # DOCKER=true always talks to the containerd that lives inside the runner
+  # image. Ignore any host CONTAINER_RUNTIME_ENDPOINT / IMAGE_SERVICE_ENDPOINT
+  # — those point at sockets that do not exist inside the container, and
+  # they get baked into TEST_ARGS a few lines below.
+  container_runtime_endpoint="unix:///run/containerd/containerd.sock"
+  image_service_endpoint=""
+else
+  container_runtime_endpoint=${CONTAINER_RUNTIME_ENDPOINT:-"unix:///run/containerd/containerd.sock"}
+  image_service_endpoint=${IMAGE_SERVICE_ENDPOINT:-""}
+fi
 run_until_failure=${RUN_UNTIL_FAILURE:-"false"}
 test_args=${TEST_ARGS:-""}
 timeout_arg=""
