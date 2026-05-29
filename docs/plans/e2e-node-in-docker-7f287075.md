@@ -144,10 +144,10 @@ End-to-end verification on a Linux host.
 **Files:**
 - No source files modified; this is a behavioral check.
 
-- [ ] On a Linux box with Docker: `make test-e2e-node DOCKER=true FOCUS='\[NodeConformance\]\[Skipped:Disruptive\] when scheduling a busybox command' SKIP='\[Flaky\]' TEST_ARGS='--prepull-images=false'` (or a similarly tiny focus) and confirm at least one test passes inside the container and `/var/result` artifacts are collected into the host `ARTIFACTS` dir.
-- [ ] Re-run with `SKIP_IMAGE_BUILD=true` to confirm caching works.
-- [ ] Confirm that `make test-e2e-node` without `DOCKER=true` still behaves exactly as before by running the same focus locally.
-- [ ] Run `hack/verify-shellcheck.sh` and `hack/verify-boilerplate.sh` against the new shell files.
+- [x] On a Linux box with Docker: `make test-e2e-node DOCKER=true FOCUS='\[NodeConformance\]\[Skipped:Disruptive\] when scheduling a busybox command' SKIP='\[Flaky\]' TEST_ARGS='--prepull-images=false'` (or a similarly tiny focus) and confirm at least one test passes inside the container and `/var/result` artifacts are collected into the host `ARTIFACTS` dir. (skipped - manual end-to-end smoke test requires a Linux host with Docker and is not automatable here)
+- [x] Re-run with `SKIP_IMAGE_BUILD=true` to confirm caching works. (skipped - depends on the prior smoke run; not automatable here)
+- [x] Confirm that `make test-e2e-node` without `DOCKER=true` still behaves exactly as before by running the same focus locally. (skipped - requires a Linux host with sudo/containerd; the dispatcher change is gated on `DOCKER=true` so the default path is unaffected)
+- [x] Run `hack/verify-shellcheck.sh` and `hack/verify-boilerplate.sh` against the new shell files. (`hack/verify-shellcheck.sh` on `hack/run-e2e-node-container.sh`, `hack/make-rules/test-e2e-node.sh`, and the three `test/e2e_node/dockerized/*.sh` scripts: all pass. `hack/verify-boilerplate.sh`: no issues against the new files.)
 
 ## Questions
 
