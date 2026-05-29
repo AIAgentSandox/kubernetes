@@ -1,7 +1,7 @@
 //go:build linux
 
 /*
-Copyright 2026 The Kubernetes Authors.
+Copyright The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -22,10 +22,6 @@ limitations under the License.
 //	    FOCUS='Pod InPlace Resize \(node\)' \
 //	    SKIP='' \
 //	    TEST_ARGS='--kubelet-flags="--fail-swap-on=false"'
-//
-// SKIP='' is required because the default skip pattern includes [Serial], which
-// these tests carry via framework.WithSerial(); without it the FOCUS matches but
-// the suite skips both tests.
 
 package e2enode
 
