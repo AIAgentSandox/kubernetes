@@ -150,8 +150,9 @@ fi
 # Honor TIMEOUT if the caller set it; otherwise keep the historical 24h
 # ceiling used by the local/remote paths.
 ginkgoflags="-timeout=${TIMEOUT:-24h}"
-# Only set -nodes when PARALLELISM is explicitly provided. Matches the
-# non-DOCKER local path which lets ginkgo pick its default (cores - 1).
+# The dispatcher resolves PARALLELISM (default 8) before exec'ing this
+# script, so we just forward whatever it set. -nodes is only meaningful
+# above 1.
 if [[ -n "${PARALLELISM:-}" && "${PARALLELISM}" -gt 1 ]]; then
   ginkgoflags="${ginkgoflags} -nodes=${PARALLELISM} "
 fi
@@ -200,8 +201,7 @@ inner_cmd='/usr/local/bin/k8s-bin/local \
   --kubelet-config-file="${E2E_KUBELET_CONFIG_FILE}" \
   --runtime-config="${E2E_RUNTIME_CONFIG}" \
   --extra-envs="${E2E_EXTRA_ENVS}" \
-  --system-spec-name="${E2E_SYSTEM_SPEC_NAME}" \
-  --debug-tool="${E2E_DEBUG_TOOL}"'
+  --system-spec-name="${E2E_SYSTEM_SPEC_NAME}"'
 
 kube::log::status "Starting e2e-node container (image=${image_tag}, artifacts=${artifacts})"
 docker run --rm --privileged \
@@ -219,7 +219,6 @@ docker run --rm --privileged \
   -e E2E_RUNTIME_CONFIG="${RUNTIME_CONFIG:-}" \
   -e E2E_EXTRA_ENVS="${EXTRA_ENVS:-}" \
   -e E2E_SYSTEM_SPEC_NAME="${SYSTEM_SPEC_NAME:-}" \
-  -e E2E_DEBUG_TOOL="${E2E_TEST_DEBUG_TOOL:-}" \
   -v "${KUBE_ROOT}:/go/src/k8s.io/kubernetes:rw" \
   -v "${bin_dir}:/usr/local/bin/k8s-bin:ro" \
   -v "k8s-e2e-node-containerd:/var/lib/containerd" \

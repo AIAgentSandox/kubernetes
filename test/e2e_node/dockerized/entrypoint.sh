@@ -56,6 +56,15 @@ cleanup() {
     if [ -n "${CONTAINERD_PID:-}" ] && kill -0 "${CONTAINERD_PID}" 2>/dev/null; then
         echo "Cleaning up containerd (PID: ${CONTAINERD_PID})..."
         kill "${CONTAINERD_PID}" || true
+        # Wait up to 5s for graceful shutdown; SIGKILL if still alive so
+        # `docker run --rm` doesn't hang on a stuck shim.
+        for _ in 1 2 3 4 5; do
+            kill -0 "${CONTAINERD_PID}" 2>/dev/null || break
+            sleep 1
+        done
+        if kill -0 "${CONTAINERD_PID}" 2>/dev/null; then
+            kill -KILL "${CONTAINERD_PID}" 2>/dev/null || true
+        fi
         wait "${CONTAINERD_PID}" 2>/dev/null || true
     fi
 }

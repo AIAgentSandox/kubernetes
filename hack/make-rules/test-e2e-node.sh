@@ -270,10 +270,20 @@ else
   test_args='--kubelet-flags="--cluster-domain='${KUBE_DNS_DOMAIN:-cluster.local}'" '${test_args}
 
   if [ "${docker_mode}" = true ]; then
-    export FOCUS SKIP LABEL_FILTER TEST_ARGS PARALLELISM RUNTIME_CONFIG EXTRA_ENVS SYSTEM_SPEC_NAME
+    # Export the dispatcher's resolved values (not just the user-supplied env
+    # vars) so the wrapper sees the same defaults this script applied — in
+    # particular PARALLELISM defaults to 8 above, matching the -nodes=8 the
+    # non-DOCKER local path adds to ginkgoflags.
+    export FOCUS="${focus}"
+    export SKIP="${skip}"
+    export LABEL_FILTER="${label_filter}"
+    export PARALLELISM="${parallelism}"
+    export TEST_ARGS="${test_args}"
+    export RUNTIME_CONFIG="${runtime_config}"
+    export EXTRA_ENVS="${extra_envs}"
+    export SYSTEM_SPEC_NAME="${system_spec_name}"
     export ARTIFACTS="${artifacts}"
     export KUBELET_CONFIG_FILE="${kubelet_config_file}"
-    export TEST_ARGS="${test_args}"
     export CONTAINER_RUNTIME_ENDPOINT="${container_runtime_endpoint}"
     export RUN_UNTIL_FAILURE="${run_until_failure}"
     : "${TIMEOUT:=}"
