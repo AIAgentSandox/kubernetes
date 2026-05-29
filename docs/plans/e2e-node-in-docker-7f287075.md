@@ -75,12 +75,12 @@ Port cri-tools' two helpers, adjusting only as needed for kubelet's expectations
 **Files:**
 - Create/Modify: `test/e2e_node/dockerized/setup-containerd.sh`, `test/e2e_node/dockerized/wait-for-containerd.sh`
 
-- [ ] `setup-containerd.sh`: write `/etc/containerd/config.toml` with `version = 2`, runtime `io.containerd.runc.v2`, and crucially **`SystemdCgroup = false`** (matches `test/e2e_node/jenkins/default-kubelet-config.yaml` which sets `cgroupDriver: cgroupfs`).
-- [ ] Write `/etc/cni/net.d/10-containerd-net.conflist` with the same `cniVersion 1.0.0` bridge/portmap/firewall/tuning plugin chain cri-tools uses, but change the subnet to **`10.100.0.0/16`** so it aligns with the `podCIDR: 10.100.0.0/24` already pinned in `default-kubelet-config.yaml`.
-- [ ] Pre-create `/etc/crictl.yaml` so `crictl` warnings are suppressed.
-- [ ] Carry over the cgroup v2 subtree-controller enablement block verbatim — it is the part that prevents kubelet from failing to create pod cgroups under `--privileged`.
-- [ ] `wait-for-containerd.sh`: wait up to `MAX_WAIT=30s` for `/run/containerd/containerd.sock`, optionally grep `containerd successfully booted` in the log, exit non-zero with the log tail on failure (identical to cri-tools).
-- [ ] `hack/verify-shellcheck.sh` on both files.
+- [x] `setup-containerd.sh`: write `/etc/containerd/config.toml` with `version = 2`, runtime `io.containerd.runc.v2`, and crucially **`SystemdCgroup = false`** (matches `test/e2e_node/jenkins/default-kubelet-config.yaml` which sets `cgroupDriver: cgroupfs`).
+- [x] Write `/etc/cni/net.d/10-containerd-net.conflist` with the same `cniVersion 1.0.0` bridge/portmap/firewall/tuning plugin chain cri-tools uses, but change the subnet to **`10.100.0.0/16`** so it aligns with the `podCIDR: 10.100.0.0/24` already pinned in `default-kubelet-config.yaml`.
+- [x] Pre-create `/etc/crictl.yaml` so `crictl` warnings are suppressed.
+- [x] Carry over the cgroup v2 subtree-controller enablement block verbatim — it is the part that prevents kubelet from failing to create pod cgroups under `--privileged`. (Adapted into a `tr | while read` form to keep `hack/verify-shellcheck.sh` happy without disabling SC2013; same behavior as cri-tools.)
+- [x] `wait-for-containerd.sh`: wait up to `MAX_WAIT=30s` for `/run/containerd/containerd.sock`, optionally grep `containerd successfully booted` in the log, exit non-zero with the log tail on failure (identical to cri-tools).
+- [x] `hack/verify-shellcheck.sh` on both files.
 
 ### Task 4: Author the container entrypoint
 The entrypoint must (1) make cgroups writable from within the privileged container, (2) start containerd, (3) hand off to the e2e_node local runner.
