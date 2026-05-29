@@ -127,12 +127,17 @@ done
 # --- Image build ------------------------------------------------------------
 # BuildKit is required so the per-Dockerfile `Dockerfile.dockerignore` is
 # honored; on a legacy builder the entire repo would be sent as build context.
+# --platform is passed so the image userland matches the binaries we just
+# built — without it `docker build` defaults to the host arch, which would
+# silently produce an amd64 image with arm64 binaries when a user sets
+# TARGET_BUILD_ARCH=linux/arm64 on an amd64 host.
 export DOCKER_BUILDKIT=1
 if [[ "${skip_image_build}" == "true" ]]; then
   kube::log::status "SKIP_IMAGE_BUILD=true; using existing image ${image_tag}"
 else
-  kube::log::status "Building runner image ${image_tag}"
+  kube::log::status "Building runner image ${image_tag} (platform=${target_arch})"
   docker build \
+    --platform "${target_arch}" \
     -t "${image_tag}" \
     -f "${KUBE_ROOT}/test/e2e_node/dockerized/Dockerfile" \
     "${KUBE_ROOT}"
@@ -205,6 +210,7 @@ inner_cmd='/usr/local/bin/k8s-bin/local \
 
 kube::log::status "Starting e2e-node container (image=${image_tag}, artifacts=${artifacts})"
 docker run --rm --privileged \
+  --platform "${target_arch}" \
   --cgroupns=host \
   --hostname "${container_hostname}" \
   -e KUBE_ROOT=/go/src/k8s.io/kubernetes \

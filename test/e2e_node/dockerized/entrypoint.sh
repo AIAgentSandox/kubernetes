@@ -47,10 +47,10 @@ setup-containerd.sh
 
 mkdir -p /run/containerd /var/lib/kubelet /var/log /var/result
 
-echo "Starting containerd..."
-containerd > /var/log/containerd.log 2>&1 &
-CONTAINERD_PID=$!
-
+# Install the cleanup trap before backgrounding containerd so a signal
+# arriving between fork and trap-installation still tears containerd down
+# cleanly. CONTAINERD_PID is checked with ${VAR:-} so an empty value is safe.
+CONTAINERD_PID=""
 # shellcheck disable=SC2317  # invoked via trap, not directly.
 cleanup() {
     if [ -n "${CONTAINERD_PID:-}" ] && kill -0 "${CONTAINERD_PID}" 2>/dev/null; then
@@ -69,6 +69,10 @@ cleanup() {
     fi
 }
 trap cleanup EXIT
+
+echo "Starting containerd..."
+containerd > /var/log/containerd.log 2>&1 &
+CONTAINERD_PID=$!
 
 wait-for-containerd.sh
 

@@ -40,8 +40,9 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Install CNI plugins (bridge/portmap/firewall/tuning are required by the
-# conflist written by setup-containerd.sh).
-ARG CNI_PLUGINS_VERSION=v1.4.0
+# conflist written by setup-containerd.sh). Version is tracked in
+# build/dependencies.yaml under the "cni" entry.
+ARG CNI_PLUGINS_VERSION=v1.9.1
 RUN mkdir -p /opt/cni/bin && \
     curl -L "https://github.com/containernetworking/plugins/releases/download/${CNI_PLUGINS_VERSION}/cni-plugins-linux-$(dpkg --print-architecture)-${CNI_PLUGINS_VERSION}.tgz" | \
     tar -C /opt/cni/bin -xz

@@ -22,7 +22,7 @@ set -euo pipefail
 
 CONTD_SOCKET="${CONTD_SOCKET:-/run/containerd/containerd.sock}"
 CONTD_LOG="${CONTD_LOG:-/var/log/containerd.log}"
-MAX_WAIT="${MAX_WAIT:-30}"
+MAX_WAIT="${MAX_WAIT:-60}"
 WAIT_COUNT=0
 
 echo "Waiting for containerd to be ready (Socket: ${CONTD_SOCKET}, Log: ${CONTD_LOG})..."

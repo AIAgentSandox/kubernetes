@@ -73,7 +73,7 @@ In addition to the regular `make test-e2e-node` env vars (forwarded by
 | `FOCUS` | `""` | Ginkgo focus regex. |
 | `SKIP` | `\[Flaky\]\|\[Slow\]\|\[Serial\]` (when `LABEL_FILTER` is empty) | Ginkgo skip regex. |
 | `LABEL_FILTER` | `""` | Ginkgo label query. |
-| `PARALLELISM` | unset → ginkgo default (`cores - 1`) | Forwarded as ginkgo `-nodes` when set to a value > 1. |
+| `PARALLELISM` | `8` | Forwarded as ginkgo `-nodes`. Set to `1` to disable parallel execution. |
 | `RUN_UNTIL_FAILURE` | `false` | Adds ginkgo `--until-it-fails=true` when `true`. |
 | `TIMEOUT` | `24h` | Replaces the ginkgo `-timeout` value. |
 | `TEST_ARGS` | `""` | Extra flags forwarded to `e2e_node.test`. |

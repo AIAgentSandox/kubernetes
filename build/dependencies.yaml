@@ -28,6 +28,8 @@ dependencies:
       match: cniVersion[\t\n\f\r ]*=
     - path: hack/local-up-cluster.sh
       match: CNI_PLUGINS_VERSION=
+    - path: test/e2e_node/dockerized/Dockerfile
+      match: CNI_PLUGINS_VERSION=
 
   # CoreDNS
   - name: "coredns-kube-up"
@@ -80,6 +82,8 @@ dependencies:
       match: configs\[Etcd\] = Config{list\.GcEtcdRegistry, "etcd", "\d+\.\d+.\d+(-(alpha|beta|rc).\d+)?(-\d+)?"}
     - path: test/e2e/testing-manifests/statefulset/etcd/statefulset.yaml
       match: registry.k8s.io/etcd:\d+\.\d+\.\d+(-\d+)?
+    - path: test/e2e_node/dockerized/Dockerfile
+      match: ETCD_VERSION=
 
   # agnhost - E2E test image
   - name: "agnhost"
