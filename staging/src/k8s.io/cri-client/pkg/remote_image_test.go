@@ -34,14 +34,22 @@ import (
 )
 
 func createRemoteImageServiceWithTracerProvider(ctx context.Context, endpoint string, tp oteltrace.TracerProvider, t *testing.T) internalapi.ImageManagerService {
-	imageService, err := NewRemoteImageService(ctx, endpoint, defaultConnectionTimeout, tp, false)
+	imageService, err := NewRemoteImageServiceBuilder().
+		WithEndpoint(endpoint).
+		WithConnectionTimeout(defaultConnectionTimeout).
+		WithTracerProvider(tp).
+		Build(ctx)
 	require.NoError(t, err)
 
 	return imageService
 }
 
 func createRemoteImageServiceWithoutTracerProvider(ctx context.Context, endpoint string, t *testing.T) internalapi.ImageManagerService {
-	imageService, err := NewRemoteImageService(ctx, endpoint, defaultConnectionTimeout, noop.NewTracerProvider(), false)
+	imageService, err := NewRemoteImageServiceBuilder().
+		WithEndpoint(endpoint).
+		WithConnectionTimeout(defaultConnectionTimeout).
+		WithTracerProvider(noop.NewTracerProvider()).
+		Build(ctx)
 	require.NoError(t, err)
 
 	return imageService

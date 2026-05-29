@@ -85,21 +85,68 @@ const (
 	CRIVersionV1 CRIVersion = "v1"
 )
 
-// NewRemoteRuntimeService creates a new internalapi.RuntimeService.
-// If useStreaming is true, streaming RPCs will be used for list operations
-// instead of unary RPCs. If the runtime returns an Unimplemented error,
-// the client automatically falls back to unary RPCs.
-// NOTE: useStreaming is supposed to be gated by the CRIListStreaming feature
-// gate and is expected to default to true once the feature graduates to GA,
-// at which point this parameter may be removed.
-func NewRemoteRuntimeService(ctx context.Context, endpoint string, connectionTimeout time.Duration, tp trace.TracerProvider, useStreaming bool) (internalapi.RuntimeService, error) {
+// RemoteRuntimeServiceBuilder builds a new internalapi.RuntimeService.
+//
+// Construct a builder with NewRemoteRuntimeServiceBuilder, then chain With*
+// methods to set non-default options before calling Build. Adding new options
+// here is preferred over adding parameters to NewRemoteRuntimeService so that
+// default values can be changed in a single place without having to update
+// every callsite.
+type RemoteRuntimeServiceBuilder struct {
+	endpoint          string
+	connectionTimeout time.Duration
+	tracerProvider    trace.TracerProvider
+	// useStreaming indicates whether to use streaming RPCs for list operations
+	// when the CRIListStreaming feature gate is enabled. It is expected to
+	// default to true once the feature graduates to GA.
+	useStreaming bool
+}
+
+// NewRemoteRuntimeServiceBuilder returns a builder with default options for
+// constructing a remote runtime service.
+func NewRemoteRuntimeServiceBuilder() *RemoteRuntimeServiceBuilder {
+	return &RemoteRuntimeServiceBuilder{}
+}
+
+// WithEndpoint sets the gRPC endpoint of the remote runtime service.
+func (b *RemoteRuntimeServiceBuilder) WithEndpoint(endpoint string) *RemoteRuntimeServiceBuilder {
+	b.endpoint = endpoint
+	return b
+}
+
+// WithConnectionTimeout sets the timeout used when connecting to the remote
+// runtime service.
+func (b *RemoteRuntimeServiceBuilder) WithConnectionTimeout(connectionTimeout time.Duration) *RemoteRuntimeServiceBuilder {
+	b.connectionTimeout = connectionTimeout
+	return b
+}
+
+// WithTracerProvider sets the OpenTelemetry tracer provider used to
+// instrument the gRPC client. A nil provider disables tracing while
+// preserving context propagation.
+func (b *RemoteRuntimeServiceBuilder) WithTracerProvider(tp trace.TracerProvider) *RemoteRuntimeServiceBuilder {
+	b.tracerProvider = tp
+	return b
+}
+
+// WithUseStreaming controls whether streaming RPCs are used for list
+// operations. If the runtime returns an Unimplemented error, the client
+// automatically falls back to the corresponding unary RPC.
+func (b *RemoteRuntimeServiceBuilder) WithUseStreaming(useStreaming bool) *RemoteRuntimeServiceBuilder {
+	b.useStreaming = useStreaming
+	return b
+}
+
+// Build creates a new internalapi.RuntimeService using the configured
+// options.
+func (b *RemoteRuntimeServiceBuilder) Build(ctx context.Context) (internalapi.RuntimeService, error) {
 	logger := klog.FromContext(ctx)
-	logger.V(3).Info("Connecting to runtime service", "endpoint", endpoint)
-	addr, dialer, err := util.GetAddressAndDialer(endpoint)
+	logger.V(3).Info("Connecting to runtime service", "endpoint", b.endpoint)
+	addr, dialer, err := util.GetAddressAndDialer(b.endpoint)
 	if err != nil {
 		return nil, err
 	}
-	ctx, cancel := context.WithTimeout(ctx, connectionTimeout)
+	ctx, cancel := context.WithTimeout(ctx, b.connectionTimeout)
 	defer cancel()
 
 	var dialOpts []grpc.DialOption
@@ -108,11 +155,11 @@ func NewRemoteRuntimeService(ctx context.Context, endpoint string, connectionTim
 		grpc.WithAuthority("localhost"),
 		grpc.WithContextDialer(dialer),
 		grpc.WithDefaultCallOptions(grpc.MaxCallRecvMsgSize(maxMsgSize)))
-	if tp != nil {
+	if b.tracerProvider != nil {
 		tracingOpts := []otelgrpc.Option{
 			otelgrpc.WithMessageEvents(otelgrpc.ReceivedEvents, otelgrpc.SentEvents),
 			otelgrpc.WithPropagators(propagation.NewCompositeTextMapPropagator(propagation.TraceContext{}, propagation.Baggage{})),
-			otelgrpc.WithTracerProvider(tp),
+			otelgrpc.WithTracerProvider(b.tracerProvider),
 		}
 		// Even if there is no TracerProvider, the otelgrpc still handles context propagation.
 		// See https://github.com/open-telemetry/opentelemetry-go/tree/main/example/passthrough
@@ -137,17 +184,34 @@ func NewRemoteRuntimeService(ctx context.Context, endpoint string, connectionTim
 	}
 
 	service := &remoteRuntimeService{
-		timeout:      connectionTimeout,
+		timeout:      b.connectionTimeout,
 		logReduction: logreduction.NewLogReduction(identicalErrorDelay),
 		conn:         conn,
 	}
-	service.useStreaming.Store(useStreaming)
+	service.useStreaming.Store(b.useStreaming)
 
-	if err := service.validateServiceConnection(ctx, conn, endpoint); err != nil {
+	if err := service.validateServiceConnection(ctx, conn, b.endpoint); err != nil {
 		return nil, fmt.Errorf("validate service connection: %w", err)
 	}
 
 	return service, nil
+}
+
+// NewRemoteRuntimeService creates a new internalapi.RuntimeService.
+// If useStreaming is true, streaming RPCs will be used for list operations
+// instead of unary RPCs. If the runtime returns an Unimplemented error,
+// the client automatically falls back to unary RPCs.
+//
+// Deprecated: Use NewRemoteRuntimeServiceBuilder so that default values
+// (e.g. useStreaming) can be changed in a single place without updating
+// every callsite.
+func NewRemoteRuntimeService(ctx context.Context, endpoint string, connectionTimeout time.Duration, tp trace.TracerProvider, useStreaming bool) (internalapi.RuntimeService, error) {
+	return NewRemoteRuntimeServiceBuilder().
+		WithEndpoint(endpoint).
+		WithConnectionTimeout(connectionTimeout).
+		WithTracerProvider(tp).
+		WithUseStreaming(useStreaming).
+		Build(ctx)
 }
 
 // Close will shutdown the internal gRPC client connection.
