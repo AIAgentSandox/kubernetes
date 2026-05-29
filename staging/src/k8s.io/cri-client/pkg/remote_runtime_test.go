@@ -26,7 +26,6 @@ import (
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 	oteltrace "go.opentelemetry.io/otel/trace"
-	"go.opentelemetry.io/otel/trace/noop"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -49,18 +48,6 @@ func createAndStartFakeRemoteRuntime(t *testing.T) (*fakeremote.RemoteRuntime, s
 	fakeRuntime.Start(endpoint)
 
 	return fakeRuntime, endpoint
-}
-
-func createRemoteRuntimeService(ctx context.Context, endpoint string, t *testing.T) internalapi.RuntimeService {
-	runtimeService, err := NewRemoteRuntimeServiceBuilder().
-		WithEndpoint(endpoint).
-		WithConnectionTimeout(defaultConnectionTimeout).
-		WithTracerProvider(noop.NewTracerProvider()).
-		Build(ctx)
-
-	require.NoError(t, err)
-
-	return runtimeService
 }
 
 func createRemoteRuntimeServiceWithTracerProvider(ctx context.Context, endpoint string, tp oteltrace.TracerProvider, t *testing.T) internalapi.RuntimeService {
@@ -111,7 +98,11 @@ func TestVersion(t *testing.T) {
 	}()
 
 	ctx := context.Background()
-	rtSvc := createRemoteRuntimeService(ctx, endpoint, t)
+	rtSvc, err := NewRemoteRuntimeServiceBuilder().
+		WithEndpoint(endpoint).
+		WithConnectionTimeout(defaultConnectionTimeout).
+		Build(ctx)
+	require.NoError(t, err)
 	version, err := rtSvc.Version(ctx, apitest.FakeVersion)
 	require.NoError(t, err)
 	assert.Equal(t, apitest.FakeVersion, version.Version)
@@ -137,7 +128,11 @@ func TestNewRemoteRuntimeServiceUnixSocketEndpoint(t *testing.T) {
 	}()
 
 	ctx := context.Background()
-	rtSvc := createRemoteRuntimeService(ctx, endpoint, t)
+	rtSvc, err := NewRemoteRuntimeServiceBuilder().
+		WithEndpoint(endpoint).
+		WithConnectionTimeout(defaultConnectionTimeout).
+		Build(ctx)
+	require.NoError(t, err)
 	version, err := rtSvc.Version(ctx, apitest.FakeVersion)
 	require.NoError(t, err)
 	assert.Equal(t, apitest.FakeVersion, version.Version)

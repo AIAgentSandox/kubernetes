@@ -132,6 +132,9 @@ func (b *RemoteRuntimeServiceBuilder) WithTracerProvider(tp trace.TracerProvider
 // WithUseStreaming controls whether streaming RPCs are used for list
 // operations. If the runtime returns an Unimplemented error, the client
 // automatically falls back to the corresponding unary RPC.
+// NOTE: useStreaming is supposed to be gated by the CRIListStreaming feature
+// gate and is expected to default to true once the feature graduates to GA,
+// at which point this method may be removed.
 func (b *RemoteRuntimeServiceBuilder) WithUseStreaming(useStreaming bool) *RemoteRuntimeServiceBuilder {
 	b.useStreaming = useStreaming
 	return b

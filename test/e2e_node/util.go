@@ -35,8 +35,6 @@ import (
 	"k8s.io/kubernetes/pkg/util/procfs"
 	e2epod "k8s.io/kubernetes/test/e2e/framework/pod"
 
-	"go.opentelemetry.io/otel/trace/noop"
-
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/runtime"
@@ -301,7 +299,6 @@ func getCRIClient(ctx context.Context) (internalapi.RuntimeService, internalapi.
 	r, err := remote.NewRemoteRuntimeServiceBuilder().
 		WithEndpoint(runtimeEndpoint).
 		WithConnectionTimeout(connectionTimeout).
-		WithTracerProvider(noop.NewTracerProvider()).
 		WithUseStreaming(useStreaming).
 		Build(ctx)
 	if err != nil {
@@ -316,7 +313,6 @@ func getCRIClient(ctx context.Context) (internalapi.RuntimeService, internalapi.
 	i, err := remote.NewRemoteImageServiceBuilder().
 		WithEndpoint(imageManagerEndpoint).
 		WithConnectionTimeout(connectionTimeout).
-		WithTracerProvider(noop.NewTracerProvider()).
 		WithUseStreaming(useStreaming).
 		Build(ctx)
 	if err != nil {
