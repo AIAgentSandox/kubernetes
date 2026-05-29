@@ -134,9 +134,9 @@ Document the new flow next to the image, and reference it from `test/e2e_node/RE
 **Files:**
 - Create/Modify: `test/e2e_node/dockerized/README.md`, `test/e2e_node/README.md`
 
-- [ ] In `test/e2e_node/dockerized/README.md` describe: what `make test-e2e-node DOCKER=true` does, the host prerequisites (Docker, Linux kernel with cgroup v2), how Linux hosts reuse `_output/local/go/bin`, how non-Linux hosts trigger a dockerized cross-build, the env vars surfaced (`FOCUS`, `SKIP`, `IMAGE_TAG`, `SKIP_IMAGE_BUILD`, `KUBELET_CONFIG_FILE`), the persistent `k8s-e2e-node-containerd` Docker volume, and how to drop into the container with `docker run -it … bash`.
-- [ ] Add a one-line pointer at the bottom of `test/e2e_node/README.md` linking to the new README so contributors discover it from the canonical location.
-- [ ] Note explicitly that this mode does not yet support `E2E_TEST_DEBUG_TOOL=dlv` (or wire it through if trivial — see Questions).
+- [x] In `test/e2e_node/dockerized/README.md` describe: what `make test-e2e-node DOCKER=true` does, the host prerequisites (Docker, Linux kernel with cgroup v2), how Linux hosts reuse `_output/local/go/bin`, how non-Linux hosts trigger a dockerized cross-build, the env vars surfaced (`FOCUS`, `SKIP`, `IMAGE_TAG`, `SKIP_IMAGE_BUILD`, `KUBELET_CONFIG_FILE`), the persistent `k8s-e2e-node-containerd` Docker volume, and how to drop into the container with `docker run -it … bash`.
+- [x] Add a one-line pointer at the bottom of `test/e2e_node/README.md` linking to the new README so contributors discover it from the canonical location.
+- [x] Note explicitly that this mode does not yet support `E2E_TEST_DEBUG_TOOL=dlv` (or wire it through if trivial — see Questions). (Documented in the "Env vars" section: dispatcher accepts the var but the image does not ship delve.)
 
 ### Task 7: Smoke test the full flow
 End-to-end verification on a Linux host.
