@@ -88,13 +88,13 @@ The entrypoint must (1) make cgroups writable from within the privileged contain
 **Files:**
 - Create/Modify: `test/e2e_node/dockerized/entrypoint.sh`
 
-- [ ] Open with the cri-tools cgroup v2 init: if `/sys/fs/cgroup/cgroup.controllers` exists, `mkdir -p /sys/fs/cgroup/init && echo 0 > /sys/fs/cgroup/init/cgroup.procs` so subtree control can be set on the root.
-- [ ] Call `setup-containerd.sh`.
-- [ ] `mkdir -p /run/containerd /var/lib/kubelet /var/log /var/result`.
-- [ ] Start `containerd > /var/log/containerd.log 2>&1 &`, capture pid, call `wait-for-containerd.sh`.
-- [ ] If `KUBELET_CONFIG_FILE` env is set, copy/link it into the mounted source tree path so `run_local.go` can find it (it's already passed through the test-e2e-node.sh script).
-- [ ] `cd /go/src/k8s.io/kubernetes` (the bind-mounted source root) and `exec "$@"` — the caller supplies the full `go run test/e2e_node/runner/local/run_local.go …` command with `--build-dependencies=false` so we reuse host-built binaries.
-- [ ] On exit, `kill $CONTAINERD_PID; wait` and propagate the exit code (same trap pattern as cri-tools).
+- [x] Open with the cri-tools cgroup v2 init: if `/sys/fs/cgroup/cgroup.controllers` exists, `mkdir -p /sys/fs/cgroup/init && echo 0 > /sys/fs/cgroup/init/cgroup.procs` so subtree control can be set on the root.
+- [x] Call `setup-containerd.sh`.
+- [x] `mkdir -p /run/containerd /var/lib/kubelet /var/log /var/result`.
+- [x] Start `containerd > /var/log/containerd.log 2>&1 &`, capture pid, call `wait-for-containerd.sh`.
+- [x] If `KUBELET_CONFIG_FILE` env is set, copy/link it into the mounted source tree path so `run_local.go` can find it (it's already passed through the test-e2e-node.sh script). (Implemented as a pre-flight existence check: the path is already inside the bind-mounted source tree because `hack/make-rules/test-e2e-node.sh` resolves it on the host; we just fail fast if it's not visible inside the container rather than copying it around.)
+- [x] `cd /go/src/k8s.io/kubernetes` (the bind-mounted source root) and `exec "$@"` — the caller supplies the full `go run test/e2e_node/runner/local/run_local.go …` command with `--build-dependencies=false` so we reuse host-built binaries. (Diverged from `exec` to plain `"$@"` so the EXIT trap can clean up containerd — `exec` would replace the shell and skip the trap. Same effective behavior for the caller, who only sees the propagated exit code.)
+- [x] On exit, `kill $CONTAINERD_PID; wait` and propagate the exit code (same trap pattern as cri-tools). (Used a `trap cleanup EXIT` so the kill+wait runs on any exit path. The test command is run under `set +e`/`$?`/`set -e` so the captured exit code is propagated even when the test exits non-zero.)
 
 ### Task 5: Author `hack/run-e2e-node-container.sh`
 The user-facing wrapper: builds the runner image, ensures binaries exist, and invokes `docker run --privileged` with the right mounts.
