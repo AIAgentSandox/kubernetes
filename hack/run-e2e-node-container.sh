@@ -204,7 +204,7 @@ container_hostname="e2e-node-runner"
 # Scope the containerd state volume to the image tag. A shared volume across
 # concurrent `make test-e2e-node DOCKER=true` invocations would let two
 # containerd instances clobber the same BoltDB / image store.
-containerd_volume="k8s-e2e-node-containerd-$(echo "${image_tag}" | tr -c 'a-zA-Z0-9._-' '_')"
+containerd_volume="k8s-e2e-node-containerd-$(printf '%s' "${image_tag}" | tr -c 'a-zA-Z0-9._-' '_')"
 
 # --- Docker run -------------------------------------------------------------
 #
