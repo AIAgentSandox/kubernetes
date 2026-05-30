@@ -177,6 +177,93 @@ docker run --rm -it --privileged --cgroupns=host \
 Then run `/usr/local/bin/entrypoint.sh bash` inside the container to get
 a shell after containerd is up.
 
+## Limitations
+
+### No systemd — `[Disruptive]` tests that restart kubelet will fail
+
+The container image does not run systemd as PID 1. Kubelet is launched
+directly as a child process by the `local` runner binary
+(`test/e2e_node/services/kubelet.go`, line ~264, the non-systemd branch).
+
+Many `[Disruptive]` and `[Serial]` tests call `restartKubelet()` or
+`mustStopKubelet()` (defined in `test/e2e_node/util.go`, lines 413–445)
+to stop and restart kubelet mid-test. These helpers unconditionally shell
+out to `systemctl`:
+
+- `findKubeletServiceName()` runs
+  `sudo systemctl list-units *kubelet*` to discover the kubelet's
+  transient unit name (`kubelet-<timestamp>.service`).
+- `restartKubelet()` runs `sudo systemctl reset-failed` and
+  `sudo systemctl restart`.
+- `mustStopKubelet()` runs `sudo systemctl kill` and returns a closure
+  that calls `sudo systemctl restart`.
+
+Since systemd is not running inside the container, all of these fail
+with `exit status 1` at the `systemctl` invocation. The test body itself
+may execute successfully, but the `AfterEach` cleanup (which typically
+calls `restartKubelet(ctx, true)`) fails, causing the test to be
+reported as failed.
+
+**Affected tests include** (non-exhaustive):
+
+- `test/e2e_node/device_plugin_multiple_test.go` — all 3 tests
+- `test/e2e_node/dra_test.go` — most DRA tests (12+ call sites)
+- `test/e2e_node/node_container_manager_test.go`
+- `test/e2e_node/standalone_test.go`
+- `test/e2e_node/kubelet_config_dir_test.go`
+- `test/e2e_node/restart_all_containers_test.go`
+- Any test tagged `[Disruptive]` that manages kubelet lifecycle
+
+**Workaround**: skip disruptive tests with
+`SKIP="\[Disruptive\]"` (this is included in the default SKIP pattern).
+
+**Possible future fixes**:
+
+1. *Add non-systemd support to `util.go`*. The runner
+   (`test/e2e_node/services/kubelet.go`, line 224) already has a
+   two-branch structure: when `systemd-run` is found, kubelet is
+   launched as a transient systemd unit with `killCommand` and
+   `restartCommand` set to `systemctl kill/restart`; when systemd is
+   absent, kubelet is launched as a direct child process. The problem is
+   that `util.go`'s `restartKubelet()` and `mustStopKubelet()` bypass
+   the runner entirely and hard-code `systemctl`. To fix this, the
+   runner would need to persist the kubelet launch command (e.g., write
+   it to `/run/kubelet-cmd.sh` or a PID file), and `util.go` would need
+   a fallback path that kills the process by PID and re-launches from
+   the saved command. The challenge is preserving the full command-line
+   flags, log file redirection, and cgroup placement that the runner
+   sets up. See also `TODO` at `util.go:321`:
+   `// TODO: Find a uniform way to deal with systemctl/initctl/service operations. #34494`.
+
+2. *Run systemd as PID 1 inside the container*. Install systemd in the
+   Docker image, use `/sbin/init` as the entrypoint, and launch both
+   containerd and the test runner as systemd services. This would make
+   `systemd-run` available so the runner's systemd branch activates
+   automatically, and all `systemctl` calls in `util.go` would work.
+   This requires `--stop-signal=SIGRTMIN+3` for clean shutdown, masking
+   unneeded units, and reworking the entrypoint flow. It is the most
+   robust path but a significant refactor.
+
+### No debug tool support
+
+`E2E_TEST_DEBUG_TOOL=dlv` and `E2E_TEST_DEBUG_TOOL=gdb` are explicitly
+rejected in `DOCKER=true` mode. The runner image does not ship `delve`
+or `gdb`, and the `hack/make-rules/test-e2e-node.sh` dispatcher exits
+with a clear error before reaching the container.
+
+### Architecture limited to the build target
+
+The runner image is built for a single `--platform` matching
+`TARGET_BUILD_ARCH` (default `linux/amd64`). Multi-arch images are not
+built. On Apple Silicon, you must pass `TARGET_BUILD_ARCH=linux/arm64`
+(see the macOS section above); the default `linux/amd64` runs under
+QEMU where seccomp is not supported, causing `RunPodSandbox` to fail.
+
+### `REMOTE=true` is incompatible
+
+`DOCKER=true` with `REMOTE=true` is explicitly rejected by the
+dispatcher with a clear error. The Docker mode is a local-only flow.
+
 ## File map
 
 - `Dockerfile` — Ubuntu 24.04 base + containerd/CNI/etcd/runc install.
