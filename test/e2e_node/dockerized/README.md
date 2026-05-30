@@ -97,6 +97,56 @@ In addition to the regular `make test-e2e-node` env vars (forwarded by
 the image does not ship `delve` or `gdb`, so the dispatcher rejects the
 combination up-front with a clear error.
 
+## Running on macOS (Apple Silicon)
+
+Docker Desktop on macOS ARM64 works but requires extra flags:
+
+### One-time setup
+
+Install GNU coreutils and GNU tar (the build scripts require them):
+
+```bash
+brew install coreutils gnu-tar
+```
+
+Add their gnubin directories to your PATH (add to `~/.zshrc` for
+persistence):
+
+```bash
+export PATH="/opt/homebrew/opt/coreutils/libexec/gnubin:/opt/homebrew/opt/gnu-tar/libexec/gnubin:$PATH"
+```
+
+### Running a focused test
+
+```bash
+make test-e2e-node DOCKER=true \
+  TARGET_BUILD_ARCH=linux/arm64 \
+  TEST_ARGS="--kubelet-flags=--fail-swap-on=false" \
+  FOCUS="should be updated when static pod updated" \
+  PARALLELISM=1
+```
+
+### Why the extra flags
+
+| Flag | Reason |
+| --- | --- |
+| `TARGET_BUILD_ARCH=linux/arm64` | The default `linux/amd64` runs under QEMU emulation on Apple Silicon. QEMU does not support seccomp, so `RunPodSandbox` fails with `seccomp is not supported`. Building for `linux/arm64` runs the container natively on Docker Desktop's ARM64 VM. |
+| `TEST_ARGS="--kubelet-flags=--fail-swap-on=false"` | Docker Desktop's Linux VM has swap enabled. Without this flag kubelet refuses to start with `running with swap on is not supported`. |
+
+### Subsequent runs
+
+After the first run, the image and binaries are cached. Use
+`SKIP_IMAGE_BUILD=true` to skip the `docker build` step:
+
+```bash
+make test-e2e-node DOCKER=true \
+  TARGET_BUILD_ARCH=linux/arm64 \
+  TEST_ARGS="--kubelet-flags=--fail-swap-on=false" \
+  SKIP_IMAGE_BUILD=true \
+  FOCUS="your test name here" \
+  PARALLELISM=1
+```
+
 ## Persistent containerd state
 
 Container images pulled by kubelet are kept in a named Docker volume
