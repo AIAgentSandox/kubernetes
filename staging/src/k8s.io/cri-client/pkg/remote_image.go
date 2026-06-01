@@ -27,6 +27,7 @@ import (
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/trace"
+	"go.opentelemetry.io/otel/trace/noop"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/backoff"
 	"google.golang.org/grpc/codes"
@@ -64,6 +65,10 @@ type RemoteImageServiceBuilder struct {
 	endpoint          string
 	connectionTimeout time.Duration
 	tracerProvider    trace.TracerProvider
+	// tracerProviderSet tracks whether WithTracerProvider was called, so that
+	// an explicit nil can be distinguished from the unset default and used to
+	// opt out of installing the otelgrpc stats handler entirely.
+	tracerProviderSet bool
 	// useStreaming indicates whether to use streaming RPCs for list operations
 	// when the CRIListStreaming feature gate is enabled. It is expected to
 	// default to true once the feature graduates to GA.
@@ -90,10 +95,14 @@ func (b *RemoteImageServiceBuilder) WithConnectionTimeout(connectionTimeout time
 }
 
 // WithTracerProvider sets the OpenTelemetry tracer provider used to
-// instrument the gRPC client. A nil provider disables tracing while
-// preserving context propagation.
+// instrument the gRPC client. If WithTracerProvider is not called, the
+// otelgrpc stats handler is installed with a noop tracer provider, so no
+// traces are produced but gRPC context propagation still works. Passing a nil
+// provider explicitly opts out of installing the stats handler entirely,
+// disabling both tracing and context propagation.
 func (b *RemoteImageServiceBuilder) WithTracerProvider(tp trace.TracerProvider) *RemoteImageServiceBuilder {
 	b.tracerProvider = tp
+	b.tracerProviderSet = true
 	return b
 }
 
@@ -108,6 +117,12 @@ func (b *RemoteImageServiceBuilder) WithUseStreaming(useStreaming bool) *RemoteI
 // Build creates a new internalapi.ImageManagerService using the configured
 // options.
 func (b *RemoteImageServiceBuilder) Build(ctx context.Context) (internalapi.ImageManagerService, error) {
+	if b.endpoint == "" {
+		return nil, errors.New("endpoint is required")
+	}
+	if b.connectionTimeout <= 0 {
+		return nil, errors.New("connectionTimeout must be positive")
+	}
 	logger := klog.FromContext(ctx)
 	logger.V(3).Info("Connecting to image service", "endpoint", b.endpoint)
 	addr, dialer, err := util.GetAddressAndDialer(b.endpoint)
@@ -124,14 +139,21 @@ func (b *RemoteImageServiceBuilder) Build(ctx context.Context) (internalapi.Imag
 		grpc.WithAuthority("localhost"),
 		grpc.WithContextDialer(dialer),
 		grpc.WithDefaultCallOptions(grpc.MaxCallRecvMsgSize(maxMsgSize)))
-	if b.tracerProvider != nil {
+	// Install the otelgrpc stats handler unless the caller explicitly opted
+	// out by calling WithTracerProvider(nil). When no tracer provider was
+	// configured, fall back to a noop provider so context propagation still
+	// works without producing real traces.
+	// See https://github.com/open-telemetry/opentelemetry-go/tree/main/example/passthrough
+	if !b.tracerProviderSet || b.tracerProvider != nil {
+		tp := b.tracerProvider
+		if tp == nil {
+			tp = noop.NewTracerProvider()
+		}
 		tracingOpts := []otelgrpc.Option{
 			otelgrpc.WithMessageEvents(otelgrpc.ReceivedEvents, otelgrpc.SentEvents),
 			otelgrpc.WithPropagators(propagation.NewCompositeTextMapPropagator(propagation.TraceContext{}, propagation.Baggage{})),
-			otelgrpc.WithTracerProvider(b.tracerProvider),
+			otelgrpc.WithTracerProvider(tp),
 		}
-		// Even if there is no TracerProvider, the otelgrpc still handles context propagation.
-		// See https://github.com/open-telemetry/opentelemetry-go/tree/main/example/passthrough
 		dialOpts = append(dialOpts,
 			grpc.WithStatsHandler(otelgrpc.NewClientHandler(tracingOpts...)))
 	}
