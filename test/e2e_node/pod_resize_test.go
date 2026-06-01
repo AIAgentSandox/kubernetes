@@ -83,6 +83,11 @@ var _ = SIGDescribe("Pod InPlace Resize (node)", framework.WithSerial(), feature
 		tStamp := strconv.Itoa(time.Now().Nanosecond())
 		testPod := podresize.MakePodWithResizableContainers(f.Namespace.Name, "", tStamp, originalContainers, nil)
 		testPod.GenerateName = "resize-node-test-"
+		// Use the host network namespace so the pod sandbox skips CNI setup.
+		// These tests verify cgroup resize behavior, not networking, and skipping
+		// CNI sidesteps environment-specific cni-loopback failures observed with
+		// containerd 2.x on some single-node e2e_node hosts.
+		testPod.Spec.HostNetwork = true
 
 		newPod := podClient.CreateSync(ctx, testPod)
 		ginkgo.DeferCleanup(func(ctx context.Context) {
@@ -155,6 +160,9 @@ var _ = SIGDescribe("Pod InPlace Resize (node)", framework.WithSerial(), feature
 		// Mount the host cgroup path so pod-level cgroup files are reachable from inside
 		// the container during verification.
 		cgroups.ConfigureHostPathForPodCgroup(testPod)
+		// Use the host network namespace so the pod sandbox skips CNI setup. See the
+		// matching note on the "resize CPU and memory" test for context.
+		testPod.Spec.HostNetwork = true
 
 		// Use Create (not CreateSync) — the pod will be in CrashLoopBackOff and never Ready
 		// until the resize patch raises the memory limit.
