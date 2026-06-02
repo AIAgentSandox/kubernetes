@@ -173,20 +173,19 @@ func (b *RemoteRuntimeServiceBuilder) Build(ctx context.Context) (internalapi.Ru
 		grpc.WithAuthority("localhost"),
 		grpc.WithContextDialer(dialer),
 		grpc.WithDefaultCallOptions(grpc.MaxCallRecvMsgSize(maxMsgSize)))
-	// Install the otelgrpc stats handler unless the caller explicitly opted
-	// out by calling WithTracerProvider(nil). When no tracer provider was
-	// configured, fall back to a noop provider so context propagation still
-	// works without producing real traces.
+	// When no tracer provider was configured, fall back to a noop provider
+	// so context propagation still works without producing real traces.
 	// See https://github.com/open-telemetry/opentelemetry-go/tree/main/example/passthrough
-	if !b.tracerProviderSet || b.tracerProvider != nil {
-		tp := b.tracerProvider
-		if tp == nil {
-			tp = noop.NewTracerProvider()
-		}
+	if !b.tracerProviderSet {
+		b.tracerProvider = noop.NewTracerProvider()
+	}
+	// Install the otelgrpc stats handler unless the caller explicitly opted
+	// out by calling WithTracerProvider(nil).
+	if b.tracerProvider != nil {
 		tracingOpts := []otelgrpc.Option{
 			otelgrpc.WithMessageEvents(otelgrpc.ReceivedEvents, otelgrpc.SentEvents),
 			otelgrpc.WithPropagators(propagation.NewCompositeTextMapPropagator(propagation.TraceContext{}, propagation.Baggage{})),
-			otelgrpc.WithTracerProvider(tp),
+			otelgrpc.WithTracerProvider(b.tracerProvider),
 		}
 		dialOpts = append(dialOpts,
 			grpc.WithStatsHandler(otelgrpc.NewClientHandler(tracingOpts...)))
