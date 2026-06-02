@@ -91,6 +91,19 @@ func TestImageServiceSpansWithoutTP(t *testing.T) {
 	assert.Empty(t, exp.GetSpans())
 }
 
+func TestImageServiceBuildValidatesRequiredOptions(t *testing.T) {
+	ctx := context.Background()
+	_, err := NewRemoteImageServiceBuilder().
+		WithConnectionTimeout(defaultConnectionTimeout).
+		Build(ctx)
+	assert.ErrorContains(t, err, "endpoint is required")
+
+	_, err = NewRemoteImageServiceBuilder().
+		WithEndpoint("unix:///tmp/cri-client-test.sock").
+		Build(ctx)
+	assert.ErrorContains(t, err, "connectionTimeout must be positive")
+}
+
 func TestNewRemoteImageServiceUnixSocketEndpoint(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("unix socket regression test is not applicable on windows")
