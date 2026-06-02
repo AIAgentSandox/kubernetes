@@ -175,7 +175,7 @@ func (b *RemoteRuntimeServiceBuilder) Build(ctx context.Context) (internalapi.Ru
 		grpc.WithDefaultCallOptions(grpc.MaxCallRecvMsgSize(maxMsgSize)))
 	// When no tracer provider was configured, fall back to a noop provider
 	// so context propagation still works without producing real traces.
-	// See https://github.com/open-telemetry/opentelemetry-go/tree/main/example/passthrough
+	// See https://github.com/open-telemetry/opentelemetry-go-contrib/tree/main/examples/passthrough
 	if !b.tracerProviderSet {
 		b.tracerProvider = noop.NewTracerProvider()
 	}
