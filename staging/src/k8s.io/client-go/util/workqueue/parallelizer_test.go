@@ -78,6 +78,35 @@ func TestParallelizeUntil(t *testing.T) {
 	}
 }
 
+func TestParallelizeUntilWithContext(t *testing.T) {
+	for _, tc := range cases {
+		t.Run(tc.String(), func(t *testing.T) {
+			seen := make([]int32, tc.pieces)
+			type ctxKey struct{}
+			ctx := context.WithValue(context.Background(), ctxKey{}, "expected")
+			var gotCtxMismatch atomic.Int32
+			ParallelizeUntilWithContext(ctx, tc.workers, tc.pieces, func(workCtx context.Context, p int) {
+				if v, _ := workCtx.Value(ctxKey{}).(string); v != "expected" {
+					gotCtxMismatch.Add(1)
+				}
+				atomic.AddInt32(&seen[p], 1)
+			}, WithChunkSize(tc.chunkSize))
+
+			if gotCtxMismatch.Load() != 0 {
+				t.Errorf("doWorkPiece received a context without the expected value %d times", gotCtxMismatch.Load())
+			}
+
+			wantSeen := make([]int32, tc.pieces)
+			for i := 0; i < tc.pieces; i++ {
+				wantSeen[i] = 1
+			}
+			if diff := cmp.Diff(wantSeen, seen); diff != "" {
+				t.Errorf("bad number of visits (-want,+got):\n%s", diff)
+			}
+		})
+	}
+}
+
 func BenchmarkParallelizeUntil(b *testing.B) {
 	for _, tc := range cases {
 		b.Run(tc.String(), func(b *testing.B) {

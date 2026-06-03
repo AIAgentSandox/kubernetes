@@ -25,6 +25,12 @@ import (
 
 type DoWorkPieceFunc func(piece int)
 
+// DoWorkPieceWithContextFunc is the contextual variant of [DoWorkPieceFunc].
+// The context is the one passed to [ParallelizeUntilWithContext]; callers can
+// extract a contextual logger from it with klog.FromContext instead of using
+// the klog global logger.
+type DoWorkPieceWithContextFunc func(ctx context.Context, piece int)
+
 type options struct {
 	chunkSize int
 }
@@ -43,7 +49,21 @@ func WithChunkSize(c int) func(*options) {
 
 // ParallelizeUntil is a framework that allows for parallelizing N
 // independent pieces of work until done or the context is canceled.
+//
+// Contextual logging: [ParallelizeUntilWithContext] should be used instead of
+// ParallelizeUntil in code which supports contextual logging, so that the
+// doWorkPiece function can derive a logger from the context.
 func ParallelizeUntil(ctx context.Context, workers, pieces int, doWorkPiece DoWorkPieceFunc, opts ...Options) {
+	ParallelizeUntilWithContext(ctx, workers, pieces, func(_ context.Context, piece int) {
+		doWorkPiece(piece)
+	}, opts...)
+}
+
+// ParallelizeUntilWithContext is the contextual variant of [ParallelizeUntil].
+// The context passed to ParallelizeUntilWithContext is forwarded to each
+// invocation of doWorkPiece, so the function can use klog.FromContext(ctx) to
+// obtain a contextual logger instead of relying on the klog global logger.
+func ParallelizeUntilWithContext(ctx context.Context, workers, pieces int, doWorkPiece DoWorkPieceWithContextFunc, opts ...Options) {
 	if pieces == 0 {
 		return
 	}
@@ -87,7 +107,7 @@ func ParallelizeUntil(ctx context.Context, workers, pieces int, doWorkPiece DoWo
 					case <-stop:
 						return
 					default:
-						doWorkPiece(p)
+						doWorkPiece(ctx, p)
 					}
 				}
 			}
