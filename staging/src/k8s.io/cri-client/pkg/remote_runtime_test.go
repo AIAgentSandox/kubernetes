@@ -196,7 +196,9 @@ func startCapturingFakeRuntime(t *testing.T) (string, *atomic.Bool, func()) {
 		server.Stop()
 		if addr, _, err := util.GetAddressAndDialer(endpoint); err == nil {
 			if _, err := os.Stat(addr); err == nil {
-				os.Remove(addr)
+				if err := os.Remove(addr); err != nil {
+					t.Errorf("remove %q: %v", addr, err)
+				}
 			}
 		}
 	}
@@ -208,7 +210,7 @@ func TestBuildValidatesRequiredOptions(t *testing.T) {
 	_, err := NewRemoteRuntimeServiceBuilder().
 		WithConnectionTimeout(defaultConnectionTimeout).
 		Build(ctx)
-	assert.ErrorContains(t, err, "endpoint is required")
+	require.ErrorContains(t, err, "endpoint is required")
 
 	_, err = NewRemoteRuntimeServiceBuilder().
 		WithEndpoint("unix:///tmp/cri-client-test.sock").
