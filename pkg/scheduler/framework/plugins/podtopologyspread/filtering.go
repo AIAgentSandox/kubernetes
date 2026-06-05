@@ -255,7 +255,7 @@ func (pl *PodTopologySpread) calPreFilterState(ctx context.Context, pod *v1.Pod,
 
 	tpCountsByNode := make([][]topologyCount, len(allNodes))
 	requiredNodeAffinity := nodeaffinity.GetRequiredNodeAffinity(pod)
-	processNode := func(n int) {
+	processNode := func(_ context.Context, n int) {
 		nodeInfo := allNodes[n]
 		node := nodeInfo.Node()
 

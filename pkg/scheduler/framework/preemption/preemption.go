@@ -416,7 +416,7 @@ func (ev *Evaluator) DryRunPreemption(ctx context.Context, state fwk.CycleState,
 
 	var statusesLock sync.Mutex
 	var errs []error
-	checkNode := func(i int) {
+	checkNode := func(_ context.Context, i int) {
 		nodeInfoCopy := potentialNodes[(int(offset)+i)%len(potentialNodes)].Snapshot()
 		logger.V(5).Info("Check the potential node for preemption", "node", nodeInfoCopy.Node().Name)
 

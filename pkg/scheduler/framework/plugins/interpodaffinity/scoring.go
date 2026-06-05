@@ -187,7 +187,7 @@ func (pl *InterPodAffinity) PreScore(
 
 	topoScores := make([]scoreMap, len(allNodes))
 	index := int32(-1)
-	processNode := func(i int) {
+	processNode := func(_ context.Context, i int) {
 		nodeInfo := allNodes[i]
 
 		// Unless the pod being scheduled has preferred affinity terms, we only

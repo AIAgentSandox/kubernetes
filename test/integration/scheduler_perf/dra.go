@@ -106,7 +106,7 @@ func (op *createResourceClaimsOp) run(tCtx ktesting.TContext) {
 	}
 	var createErr error
 	var mutex sync.Mutex
-	create := func(i int) {
+	create := func(_ context.Context, i int) {
 		err := func() error {
 			if _, err := tCtx.Client().ResourceV1().ResourceClaims(op.Namespace).Create(tCtx, claimTemplate.DeepCopy(), metav1.CreateOptions{}); err != nil {
 				return fmt.Errorf("create claim: %v", err)

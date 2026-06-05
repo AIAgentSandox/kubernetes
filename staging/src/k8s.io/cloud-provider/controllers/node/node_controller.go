@@ -274,7 +274,7 @@ func (cnc *CloudNodeController) UpdateNodeStatus(ctx context.Context) error {
 		klog.V(2).Infof("Update %d nodes status took %v.", len(nodes), time.Since(start))
 	}()
 
-	updateNodeFunc := func(piece int) {
+	updateNodeFunc := func(_ context.Context, piece int) {
 		node := nodes[piece].DeepCopy()
 		// Do not process nodes that are still tainted, those will be processed by syncNode()
 		cloudTaint := getCloudTaint(node.Spec.Taints)

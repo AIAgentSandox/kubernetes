@@ -805,7 +805,7 @@ func (c *Controller) updateLoadBalancerHosts(ctx context.Context, services []*v1
 	servicesToRetry = sets.NewString()
 	lock := sync.Mutex{}
 
-	doWork := func(piece int) {
+	doWork := func(_ context.Context, piece int) {
 		if shouldRetry := c.nodeSyncService(services[piece]); !shouldRetry {
 			return
 		}

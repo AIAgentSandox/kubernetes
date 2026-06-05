@@ -708,7 +708,7 @@ func (nc *Controller) monitorNodeHealth(ctx context.Context) error {
 
 	var zoneToNodeConditionsLock sync.Mutex
 	zoneToNodeConditions := map[string][]*v1.NodeCondition{}
-	updateNodeFunc := func(piece int) {
+	updateNodeFunc := func(_ context.Context, piece int) {
 		start := nc.now()
 		defer func() {
 			updateNodeHealthDuration.Observe(time.Since(start.Time).Seconds())

@@ -152,7 +152,7 @@ func (pl *PodTopologySpread) PreScore(
 
 	// Ignore parsing errors for backwards compatibility.
 	requiredNodeAffinity := nodeaffinity.GetRequiredNodeAffinity(pod)
-	processAllNode := func(n int) {
+	processAllNode := func(_ context.Context, n int) {
 		nodeInfo := allNodes[n]
 		node := nodeInfo.Node()
 

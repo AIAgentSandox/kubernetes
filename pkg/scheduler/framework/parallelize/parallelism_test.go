@@ -17,6 +17,7 @@ limitations under the License.
 package parallelize
 
 import (
+	"context"
 	"fmt"
 	"sync"
 	"testing"
@@ -74,7 +75,7 @@ func TestGoroutinesMetric(t *testing.T) {
 
 	_, ctx := ktesting.NewTestContext(t)
 	p := NewParallelizer(DefaultParallelism)
-	p.Until(ctx, pieces, func(_ int) {
+	p.Until(ctx, pieces, func(_ context.Context, _ int) {
 		val, err := testutil.GetGaugeMetricValue(metrics.Goroutines.WithLabelValues(operation))
 		if err != nil {
 			t.Fatalf("failed to read goroutines metric inside Until: %v", err)

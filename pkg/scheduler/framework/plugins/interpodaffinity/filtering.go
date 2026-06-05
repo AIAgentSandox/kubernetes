@@ -216,7 +216,7 @@ func podMatchesAnyAffinityTerms(terms []fwk.AffinityTerm, pod *v1.Pod) bool {
 func (pl *InterPodAffinity) getExistingAntiAffinityCounts(ctx context.Context, pod *v1.Pod, nsLabels labels.Set, nodes []fwk.NodeInfo) topologyToMatchedTermCount {
 	antiAffinityCountsList := make([]topologyToMatchedTermCountList, len(nodes))
 	index := int32(-1)
-	processNode := func(i int) {
+	processNode := func(_ context.Context, i int) {
 		nodeInfo := nodes[i]
 		node := nodeInfo.Node()
 
@@ -253,7 +253,7 @@ func (pl *InterPodAffinity) getIncomingAffinityAntiAffinityCounts(ctx context.Co
 	affinityCountsList := make([]topologyToMatchedTermCountList, len(allNodes))
 	antiAffinityCountsList := make([]topologyToMatchedTermCountList, len(allNodes))
 	index := int32(-1)
-	processNode := func(i int) {
+	processNode := func(_ context.Context, i int) {
 		nodeInfo := allNodes[i]
 		node := nodeInfo.Node()
 

@@ -83,7 +83,7 @@ var _ = SIGDescribe("Servers with support for Table transformation", func() {
 		client := c.CoreV1().PodTemplates(ns)
 
 		ginkgo.By("creating a large number of resources")
-		workqueue.ParallelizeUntil(ctx, 5, 20, func(i int) {
+		workqueue.ParallelizeUntil(ctx, 5, 20, func(_ context.Context, i int) {
 			for tries := 3; tries >= 0; tries-- {
 				_, err := client.Create(ctx, &v1.PodTemplate{
 					ObjectMeta: metav1.ObjectMeta{

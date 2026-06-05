@@ -242,7 +242,7 @@ var _ = SIGDescribe("Job", func() {
 		gomega.Expect(pods).To(gomega.HaveLen(numPods), "Number of running pods doesn't match parallelism")
 
 		ginkgo.By("Evict all the Pods")
-		workqueue.ParallelizeUntil(ctx, numPods, numPods, func(index int) {
+		workqueue.ParallelizeUntil(ctx, numPods, numPods, func(_ context.Context, index int) {
 			defer ginkgo.GinkgoRecover()
 
 			pod := pods[index]

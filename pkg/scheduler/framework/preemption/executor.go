@@ -223,7 +223,7 @@ func (e *Executor) prepareCandidateAsync(c Candidate, preemptor ExecutorPreempto
 	metrics.PreemptionVictims.Observe(float64(len(c.Victims().Pods)))
 
 	errCh := parallelize.NewResultChannel[error]()
-	preemptPod := func(index int) {
+	preemptPod := func(_ context.Context, index int) {
 		victim := victimPods[index]
 		if err := e.PreemptPod(ctx, c, preemptor, victim, pluginName); err != nil {
 			errCh.SendWithCancel(err, cancel)
@@ -318,7 +318,7 @@ func (e *Executor) prepareCandidate(ctx context.Context, c Candidate, preemptor 
 	defer cancel()
 	logger := klog.FromContext(ctx)
 	errCh := parallelize.NewResultChannel[error]()
-	fh.Parallelizer().Until(ctx, len(c.Victims().Pods), func(index int) {
+	fh.Parallelizer().Until(ctx, len(c.Victims().Pods), func(_ context.Context, index int) {
 		victim := c.Victims().Pods[index]
 		if victim.DeletionTimestamp != nil {
 			// Graceful pod deletion has already started. Sending another API call is unnecessary.

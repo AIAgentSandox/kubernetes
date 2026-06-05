@@ -1375,7 +1375,7 @@ func (f *frameworkImpl) RunScorePlugins(ctx context.Context, state fwk.CycleStat
 			logger = klog.LoggerWithName(logger, "Score")
 		}
 		// Run Score method for each node in parallel.
-		f.Parallelizer().Until(ctx, len(nodes), func(index int) {
+		f.Parallelizer().Until(ctx, len(nodes), func(_ context.Context, index int) {
 			nodeInfo := nodes[index]
 			nodeName := nodeInfo.Node().Name
 			logger := logger
@@ -1406,7 +1406,7 @@ func (f *frameworkImpl) RunScorePlugins(ctx context.Context, state fwk.CycleStat
 	}
 
 	// Run NormalizeScore method for each ScorePlugin in parallel.
-	f.Parallelizer().Until(ctx, len(plugins), func(index int) {
+	f.Parallelizer().Until(ctx, len(plugins), func(_ context.Context, index int) {
 		pl := plugins[index]
 		if pl.ScoreExtensions() == nil {
 			return
@@ -1425,7 +1425,7 @@ func (f *frameworkImpl) RunScorePlugins(ctx context.Context, state fwk.CycleStat
 
 	// Apply score weight for each ScorePlugin in parallel,
 	// and then, build allNodePluginScores.
-	f.Parallelizer().Until(ctx, len(nodes), func(index int) {
+	f.Parallelizer().Until(ctx, len(nodes), func(_ context.Context, index int) {
 		nodePluginScores := fwk.NodePluginScores{
 			Name:   nodes[index].Node().Name,
 			Scores: make([]fwk.PluginScore, len(plugins)),
@@ -1516,7 +1516,7 @@ func (f *frameworkImpl) RunPlacementScorePlugins(ctx context.Context, state fwk.
 			logger = klog.LoggerWithName(logger, "PlacementScore")
 		}
 		// Run ScorePlacement method for each placement in parallel.
-		f.Parallelizer().Until(ctx, len(podGroupAssignments), func(index int) {
+		f.Parallelizer().Until(ctx, len(podGroupAssignments), func(_ context.Context, index int) {
 			pga := podGroupAssignments[index]
 			logger := logger
 			if verboseLogs {
@@ -1546,7 +1546,7 @@ func (f *frameworkImpl) RunPlacementScorePlugins(ctx context.Context, state fwk.
 	}
 
 	// Run NormalizePlacementScore method for each PlacementScorePlugin in parallel.
-	f.Parallelizer().Until(ctx, len(plugins), func(index int) {
+	f.Parallelizer().Until(ctx, len(plugins), func(_ context.Context, index int) {
 		pl := plugins[index]
 		if pl.PlacementScoreExtensions() == nil {
 			return
@@ -1565,7 +1565,7 @@ func (f *frameworkImpl) RunPlacementScorePlugins(ctx context.Context, state fwk.
 
 	// Apply score weight for each PlacementScorePlugin in parallel,
 	// and then, build allPlacementPluginScores.
-	f.Parallelizer().Until(ctx, len(podGroupAssignments), func(index int) {
+	f.Parallelizer().Until(ctx, len(podGroupAssignments), func(_ context.Context, index int) {
 		placementPluginScores := fwk.PlacementPluginScores{
 			Placement: podGroupAssignments[index].Placement,
 			Scores:    make([]fwk.PluginScore, len(plugins)),
@@ -1681,7 +1681,7 @@ func (f *frameworkImpl) RunPreBindPlugins(ctx context.Context, state fwk.CycleSt
 			}
 			continue
 		}
-		f.Parallelizer().Until(ctx, len(plugins), func(index int) {
+		f.Parallelizer().Until(ctx, len(plugins), func(_ context.Context, index int) {
 			if status := run(plugins[index]); !status.IsSuccess() {
 				statusCh.SendWithCancel(status, func() {
 					cancel(errors.New("some other PreBind operation failed"))

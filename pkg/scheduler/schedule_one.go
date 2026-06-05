@@ -802,7 +802,7 @@ func (sched *Scheduler) findNodesThatPassFilters(
 		status *fwk.Status
 	}
 	result := make([]*nodeStatus, numAllNodes)
-	checkNode := func(i int) {
+	checkNode := func(_ context.Context, i int) {
 		// We check the nodes starting from where we left off in the previous scheduling cycle,
 		// this is to make sure all nodes have the same chance of being examined across pods.
 		nodeInfo := nodes[(sched.nextStartNodeIndex+i)%numAllNodes]

@@ -62,30 +62,10 @@ func TestParallelizeUntil(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.String(), func(t *testing.T) {
 			seen := make([]int32, tc.pieces)
-			ctx := context.Background()
-			ParallelizeUntil(ctx, tc.workers, tc.pieces, func(p int) {
-				atomic.AddInt32(&seen[p], 1)
-			}, WithChunkSize(tc.chunkSize))
-
-			wantSeen := make([]int32, tc.pieces)
-			for i := 0; i < tc.pieces; i++ {
-				wantSeen[i] = 1
-			}
-			if diff := cmp.Diff(wantSeen, seen); diff != "" {
-				t.Errorf("bad number of visits (-want,+got):\n%s", diff)
-			}
-		})
-	}
-}
-
-func TestParallelizeUntilWithContext(t *testing.T) {
-	for _, tc := range cases {
-		t.Run(tc.String(), func(t *testing.T) {
-			seen := make([]int32, tc.pieces)
 			type ctxKey struct{}
 			ctx := context.WithValue(context.Background(), ctxKey{}, "expected")
 			var gotCtxMismatch atomic.Int32
-			ParallelizeUntilWithContext(ctx, tc.workers, tc.pieces, func(workCtx context.Context, p int) {
+			ParallelizeUntil(ctx, tc.workers, tc.pieces, func(workCtx context.Context, p int) {
 				if v, _ := workCtx.Value(ctxKey{}).(string); v != "expected" {
 					gotCtxMismatch.Add(1)
 				}
@@ -114,7 +94,7 @@ func BenchmarkParallelizeUntil(b *testing.B) {
 			isPrime := make([]bool, tc.pieces)
 			b.ResetTimer()
 			for c := 0; c < b.N; c++ {
-				ParallelizeUntil(ctx, tc.workers, tc.pieces, func(p int) {
+				ParallelizeUntil(ctx, tc.workers, tc.pieces, func(_ context.Context, p int) {
 					isPrime[p] = calPrime(p)
 				}, WithChunkSize(tc.chunkSize))
 			}

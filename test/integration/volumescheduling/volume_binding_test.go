@@ -440,7 +440,7 @@ func testVolumeBindingStress(t *testing.T, schedulerResyncPeriod time.Duration, 
 	podVolumesCount := podLimit * volsPerPod
 	pvs := make([]*v1.PersistentVolume, podVolumesCount)
 	pvcs := make([]*v1.PersistentVolumeClaim, podVolumesCount)
-	workqueue.ParallelizeUntil(context.TODO(), 16, podVolumesCount, func(i int) {
+	workqueue.ParallelizeUntil(context.TODO(), 16, podVolumesCount, func(_ context.Context, i int) {
 		var (
 			pv      *v1.PersistentVolume
 			pvc     *v1.PersistentVolumeClaim
@@ -474,7 +474,7 @@ func testVolumeBindingStress(t *testing.T, schedulerResyncPeriod time.Duration, 
 
 	klog.Infof("Start creating Pods")
 	pods := make([]*v1.Pod, podLimit)
-	workqueue.ParallelizeUntil(context.TODO(), 16, podLimit, func(i int) {
+	workqueue.ParallelizeUntil(context.TODO(), 16, podLimit, func(_ context.Context, i int) {
 		// Generate string of all the PVCs for the pod
 		podPvcs := []string{}
 		for j := i * volsPerPod; j < (i+1)*volsPerPod; j++ {
@@ -490,7 +490,7 @@ func testVolumeBindingStress(t *testing.T, schedulerResyncPeriod time.Duration, 
 
 	klog.Infof("Start validating pod scheduled")
 	// Validate Pods scheduled
-	workqueue.ParallelizeUntil(context.TODO(), 16, len(pods), func(i int) {
+	workqueue.ParallelizeUntil(context.TODO(), 16, len(pods), func(_ context.Context, i int) {
 		pod := pods[i]
 		// Use increased timeout for stress test because there is a higher chance of
 		// PV sync error
@@ -501,14 +501,14 @@ func testVolumeBindingStress(t *testing.T, schedulerResyncPeriod time.Duration, 
 
 	klog.Infof("Start validating PVCs scheduled")
 	// Validate PVC/PV binding
-	workqueue.ParallelizeUntil(context.TODO(), 16, len(pvcs), func(i int) {
+	workqueue.ParallelizeUntil(context.TODO(), 16, len(pvcs), func(_ context.Context, i int) {
 		validatePVCPhase(t, config.client, pvcs[i].Name, config.ns, v1.ClaimBound, dynamic)
 	})
 
 	// Don't validate pv for dynamic provisioning test
 	if !dynamic {
 		klog.Infof("Start validating PVs scheduled")
-		workqueue.ParallelizeUntil(context.TODO(), 16, len(pvs), func(i int) {
+		workqueue.ParallelizeUntil(context.TODO(), 16, len(pvs), func(_ context.Context, i int) {
 			validatePVPhase(t, config.client, pvs[i].Name, v1.VolumeBound)
 		})
 	}

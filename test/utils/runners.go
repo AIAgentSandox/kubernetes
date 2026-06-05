@@ -1159,7 +1159,7 @@ func makeCreatePod(client clientset.Interface, namespace string, podTemplate *v1
 func CreatePod(ctx context.Context, client clientset.Interface, namespace string, podCount int, podTemplate PodTemplate) error {
 	var createError error
 	lock := sync.Mutex{}
-	createPodFunc := func(i int) {
+	createPodFunc := func(_ context.Context, i int) {
 		pod, err := podTemplate.GetPodTemplate(i, podCount)
 		if err != nil {
 			lock.Lock()
@@ -1189,7 +1189,7 @@ func CreatePod(ctx context.Context, client clientset.Interface, namespace string
 func CreatePodWithPersistentVolume(ctx context.Context, client clientset.Interface, namespace string, claimTemplate *v1.PersistentVolumeClaim, factory volumeFactory, podTemplate PodTemplate, count int, bindVolume bool) error {
 	var createError error
 	lock := sync.Mutex{}
-	createPodFunc := func(i int) {
+	createPodFunc := func(_ context.Context, i int) {
 		pvcName := fmt.Sprintf("pvc-%d", i)
 		// pvc
 		pvc := claimTemplate.DeepCopy()

@@ -2386,7 +2386,7 @@ func BenchmarkFilter(b *testing.B) {
 				if _, s := p.PreFilter(ctx, state, tt.pod, nodeInfos); !s.IsSuccess() {
 					b.Fatal(s.AsError())
 				}
-				filterNode := func(i int) {
+				filterNode := func(_ context.Context, i int) {
 					n, _ := p.sharedLister.NodeInfos().Get(allNodes[i].Name)
 					p.Filter(ctx, state, tt.pod, n)
 				}
