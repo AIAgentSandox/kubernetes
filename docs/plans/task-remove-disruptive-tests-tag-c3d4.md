@@ -75,11 +75,11 @@ The `bugs` unit test exercises the wrapper's bookkeeping (label sets, output ren
 **Files:**
 - Modify: `test/e2e/framework/internal/unittests/bugs/bugs.go`
 
-- [ ] Remove the `framework.WithDisruptive(),` line from the `framework.SIGDescribe("testing")("abc", …)` argument list inside `Describe()`.
-- [ ] In the `ListTestsOutput` constant, delete the ` [Disruptive]` token from both of the long expected lines (preserve all other tokens and their order — the ordering is alphabetical/trailing-leafNodeLabels and must match the wrapper's actual emission after Task 4).
-- [ ] In the `ListLabelsOutput` constant, delete the `    Disruptive\n` line.
-- [ ] Do not change the surrounding bug-output strings (`bugOutput`, `numBugs`, `bugsOutputCompare` etc.) unless the line numbers in `ERROR: bugs.go:NN` shift because of the deleted source line — if they do shift, update each affected line number to the new value precisely (this is the only `LineNumber` arithmetic in the test).
-- [ ] Run `go test ./test/e2e/framework/internal/unittests/bugs/...` and confirm it passes.
+- [x] Remove the `framework.WithDisruptive(),` line from the `framework.SIGDescribe("testing")("abc", …)` argument list inside `Describe()`.
+- [x] In the `ListTestsOutput` constant, delete the ` [Disruptive]` token from both of the long expected lines (preserve all other tokens and their order — the ordering is alphabetical/trailing-leafNodeLabels and must match the wrapper's actual emission after Task 4).
+- [x] In the `ListLabelsOutput` constant, delete the `    Disruptive\n` line.
+- [x] Do not change the surrounding bug-output strings (`bugOutput`, `numBugs`, `bugsOutputCompare` etc.) unless the line numbers in `ERROR: bugs.go:NN` shift because of the deleted source line — if they do shift, update each affected line number to the new value precisely (this is the only `LineNumber` arithmetic in the test). [updated bugs.go:107→106, ListTestsOutput 101→100 and 96→95]
+- [x] Run `go test ./test/e2e/framework/internal/unittests/bugs/...` and confirm it passes.
 
 ### Task 3: Update the conformance walk test fixture
 `TestValidateTestName` has two fixture entries that use `[Disruptive]` as an example of a *valid* tag. Once the tag is gone these strings should also drop it so the fixture remains representative.
