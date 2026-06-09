@@ -45,7 +45,7 @@ import (
 	admissionapi "k8s.io/pod-security-admission/api"
 )
 
-var _ = sigDescribe(feature.Windows, "GracefulNodeShutdown", framework.WithSerial(), framework.WithDisruptive(), framework.WithSlow(), skipUnlessWindows(func() {
+var _ = sigDescribe(feature.Windows, "GracefulNodeShutdown", framework.WithSerial(), framework.WithSlow(), skipUnlessWindows(func() {
 	f := framework.NewDefaultFramework("windows-node-graceful-shutdown")
 	f.NamespacePodSecurityLevel = admissionapi.LevelPrivileged
 

@@ -98,7 +98,7 @@ var _ = SIGDescribe("NodeProblemDetector", feature.NodeProblemDetector, func() {
 		workingSetStats := make(map[string][]float64)
 
 		// Some tests suites running for days.
-		// This test is not marked as Disruptive or Serial so we do not want to
+		// This test is not marked as Serial so we do not want to
 		// restart the kubelet during the test to check for KubeletStart event
 		// detection. We use heuristic here to check if we need to validate for the
 		// KubeletStart event since there is no easy way to check when test has actually started.

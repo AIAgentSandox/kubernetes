@@ -67,7 +67,7 @@ var _ = SIGDescribe("KubeletSeparateDiskGC", feature.KubeletSeparateDiskGC, func
 		gomega.Expect(summary.Node.Fs.CapacityBytes).To(gomega.Equal(summary.Node.Runtime.ContainerFs.CapacityBytes))
 	})
 
-	f.Context("when there is disk pressure", framework.WithSlow(), framework.WithSerial(), framework.WithDisruptive(), func() {
+	f.Context("when there is disk pressure", framework.WithSlow(), framework.WithSerial(), func() {
 		f.Context("on imageFs", func() {
 			tempSetCurrentKubeletConfig(f, func(ctx context.Context, initialConfig *kubeletconfig.KubeletConfiguration) {
 				initialConfig.EvictionHard = map[string]string{

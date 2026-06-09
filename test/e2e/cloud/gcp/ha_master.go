@@ -232,7 +232,7 @@ var _ = SIGDescribe("HA-master", feature.HAMaster, func() {
 		verifyRCs(ctx, c, ns, existingRCLabelSets)
 	}
 
-	f.It("survive addition/removal replicas same zone", f.WithSerial(), f.WithDisruptive(), func(ctx context.Context) {
+	f.It("survive addition/removal replicas same zone", f.WithSerial(), func(ctx context.Context) {
 		zone := framework.TestContext.CloudConfig.Zone
 		step(ctx, None, "")
 		numAdditionalReplicas := 2
@@ -244,7 +244,7 @@ var _ = SIGDescribe("HA-master", feature.HAMaster, func() {
 		}
 	})
 
-	f.It("survive addition/removal replicas different zones", f.WithSerial(), f.WithDisruptive(), func(ctx context.Context) {
+	f.It("survive addition/removal replicas different zones", f.WithSerial(), func(ctx context.Context) {
 		zone := framework.TestContext.CloudConfig.Zone
 		region := findRegionForZone(zone)
 		zones := findZonesForRegion(region)
@@ -262,7 +262,7 @@ var _ = SIGDescribe("HA-master", feature.HAMaster, func() {
 		}
 	})
 
-	f.It("survive addition/removal replicas multizone workers", f.WithSerial(), f.WithDisruptive(), func(ctx context.Context) {
+	f.It("survive addition/removal replicas multizone workers", f.WithSerial(), func(ctx context.Context) {
 		zone := framework.TestContext.CloudConfig.Zone
 		region := findRegionForZone(zone)
 		zones := findZonesForRegion(region)

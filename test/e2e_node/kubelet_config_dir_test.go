@@ -32,7 +32,7 @@ import (
 	"k8s.io/utils/cpuset"
 )
 
-var _ = SIGDescribe("Kubelet Config", framework.WithSlow(), framework.WithSerial(), framework.WithDisruptive(), feature.KubeletConfigDropInDir, func() {
+var _ = SIGDescribe("Kubelet Config", framework.WithSlow(), framework.WithSerial(), feature.KubeletConfigDropInDir, func() {
 	f := framework.NewDefaultFramework("kubelet-config-drop-in-dir-test")
 	ginkgo.Context("when merging drop-in configs", func() {
 		var oldcfg *kubeletconfig.KubeletConfiguration

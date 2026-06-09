@@ -34,7 +34,7 @@ import (
 	"github.com/onsi/gomega"
 )
 
-var _ = SIGDescribe(feature.CloudProvider, framework.WithDisruptive(), "Nodes", func() {
+var _ = SIGDescribe(feature.CloudProvider, "Nodes", func() {
 	f := framework.NewDefaultFramework("cloudprovider")
 	f.NamespacePodSecurityLevel = admissionapi.LevelPrivileged
 	var c clientset.Interface

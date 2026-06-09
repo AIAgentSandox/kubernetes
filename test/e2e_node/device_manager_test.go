@@ -98,7 +98,7 @@ var _ = SIGDescribe("Device Manager", framework.WithSerial(), feature.DeviceMana
 		   12. Delete the sample device plugin pod.
 		   13. Remove `/var/lib/kubelet/device-plugins/sample/` and its content, the directory created to control registration
 	*/
-	f.Context("With sample device plugin", f.WithSerial(), f.WithDisruptive(), func() {
+	f.Context("With sample device plugin", f.WithSerial(), func() {
 		var deviceCount int = 2
 		var devicePluginPod *v1.Pod
 		var triggerPathFile, triggerPathDir string

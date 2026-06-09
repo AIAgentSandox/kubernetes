@@ -49,7 +49,7 @@ var _ = SIGDescribe("Device Plugin Multiple", framework.WithSerial(), feature.De
 func testDevicePluginMultiple(f *framework.Framework, pluginSockDir string) {
 	pluginSockDir = filepath.Clean(pluginSockDir) + "/"
 
-	f.Context("DevicePlugin", f.WithSerial(), f.WithDisruptive(), func() {
+	f.Context("DevicePlugin", f.WithSerial(), func() {
 		var devicePluginPod, devicePluginPod2 *v1.Pod
 		var v1alphaPodResources *kubeletpodresourcesv1alpha1.ListPodResourcesResponse
 		var v1PodResources *kubeletpodresourcesv1.ListPodResourcesResponse

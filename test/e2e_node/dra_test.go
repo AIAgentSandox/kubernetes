@@ -753,7 +753,7 @@ var _ = framework.SIGDescribe("node")(framework.WithLabel("DRA"), feature.Dynami
 	})
 
 	f.Context("ResourceSlice", f.WithSerial(), func() {
-		f.It("must be removed on kubelet startup", f.WithDisruptive(), func(ctx context.Context) {
+		f.It("must be removed on kubelet startup", func(ctx context.Context) {
 			ginkgo.By("stop kubelet")
 			restartKubelet := mustStopKubelet(ctx, f)
 			ginkgo.DeferCleanup(func() {

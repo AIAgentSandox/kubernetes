@@ -37,7 +37,7 @@ import (
 	"github.com/onsi/gomega"
 )
 
-var _ = SIGDescribe("Etcd failure", framework.WithDisruptive(), func() {
+var _ = SIGDescribe("Etcd failure", func() {
 
 	f := framework.NewDefaultFramework("etcd-failure")
 	f.NamespacePodSecurityLevel = admissionapi.LevelPrivileged

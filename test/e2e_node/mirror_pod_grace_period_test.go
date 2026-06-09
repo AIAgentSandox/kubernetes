@@ -136,7 +136,7 @@ var _ = SIGDescribe("MirrorPodWithGracePeriod", func() {
 			gomega.Expect(pod.Spec.Containers[0].Image).To(gomega.Equal(image))
 		})
 
-		f.Context("and the container runtime is temporarily down during pod termination", f.WithNodeConformance(), f.WithSerial(), f.WithDisruptive(), func() {
+		f.Context("and the container runtime is temporarily down during pod termination", f.WithNodeConformance(), f.WithSerial(), func() {
 			ginkgo.BeforeEach(func(ctx context.Context) {
 				// Ensure that prior to the test starting, no other pods are running or in the process of being terminated other than the mirror pod.
 				// This is necessary as the test verifies metrics that assume that there is only one pod (the static pod) being run, and all other pods have been terminated.

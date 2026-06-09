@@ -32,7 +32,7 @@ import (
 	admissionapi "k8s.io/pod-security-admission/api"
 )
 
-var _ = utils.SIGDescribe("CSI Mock when kubelet restart", framework.WithSerial(), framework.WithDisruptive(), func() {
+var _ = utils.SIGDescribe("CSI Mock when kubelet restart", framework.WithSerial(), func() {
 	f := framework.NewDefaultFramework("csi-mock-when-kubelet-restart")
 	f.NamespacePodSecurityLevel = admissionapi.LevelPrivileged
 	m := newMockDriverSetup(f)

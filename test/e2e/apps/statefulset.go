@@ -1770,7 +1770,7 @@ var _ = SIGDescribe("StatefulSet", func() {
 			e2estatefulset.DeleteAllStatefulSets(ctx, c, ns)
 		})
 
-		f.It("PVC should be recreated when pod is pending due to missing PVC", f.WithDisruptive(), f.WithSerial(), func(ctx context.Context) {
+		f.It("PVC should be recreated when pod is pending due to missing PVC", f.WithSerial(), func(ctx context.Context) {
 			e2epv.SkipIfNoDefaultStorageClass(ctx, c)
 
 			readyNode, err := e2enode.GetRandomReadySchedulableNode(ctx, c)

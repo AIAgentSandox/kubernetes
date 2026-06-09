@@ -129,7 +129,7 @@ func testDevicePlugin(f *framework.Framework, pluginSockDir string) {
 		return result
 	}
 
-	f.Context("DevicePlugin", f.WithSerial(), f.WithDisruptive(), func() {
+	f.Context("DevicePlugin", f.WithSerial(), func() {
 		var devicePluginPod, dptemplate *v1.Pod
 		var v1alphaPodResources *kubeletpodresourcesv1alpha1.ListPodResourcesResponse
 		var v1PodResources *kubeletpodresourcesv1.ListPodResourcesResponse
@@ -790,7 +790,7 @@ func testDevicePlugin(f *framework.Framework, pluginSockDir string) {
 }
 
 func testDevicePluginNodeReboot(f *framework.Framework, pluginSockDir string) {
-	f.Context("DevicePlugin", f.WithSerial(), f.WithDisruptive(), func() {
+	f.Context("DevicePlugin", f.WithSerial(), func() {
 		var devicePluginPod *v1.Pod
 		var v1PodResources *kubeletpodresourcesv1.ListPodResourcesResponse
 		var triggerPathFile, triggerPathDir string

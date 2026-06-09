@@ -49,7 +49,7 @@ var _ = utils.SIGDescribe("Retroactive StorageClass Assignment", func() {
 		namespace = f.Namespace.Name
 	})
 
-	f.It("should assign default StorageClass to PVCs retroactively", f.WithDisruptive(), f.WithSerial(), func(ctx context.Context) {
+	f.It("should assign default StorageClass to PVCs retroactively", f.WithSerial(), func(ctx context.Context) {
 		defaultSCs, err := getDefaultStorageClasses(ctx, client)
 		framework.ExpectNoError(err, "Failed to get default StorageClasses")
 

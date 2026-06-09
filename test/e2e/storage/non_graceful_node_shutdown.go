@@ -56,7 +56,7 @@ This test performs the following:
 - Removes the `out-of-service` taint from the node.
 */
 
-var _ = utils.SIGDescribe(framework.WithDisruptive(), "[LinuxOnly] NonGracefulNodeShutdown", func() {
+var _ = utils.SIGDescribe("[LinuxOnly] NonGracefulNodeShutdown", func() {
 	var (
 		c  clientset.Interface
 		ns string

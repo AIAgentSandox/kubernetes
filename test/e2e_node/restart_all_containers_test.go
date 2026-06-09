@@ -37,7 +37,6 @@ import (
 
 var _ = SIGDescribe("RestartAllContainersWithKubeletRestarts",
 	framework.WithSerial(),
-	framework.WithDisruptive(),
 	framework.WithFeatureGate(features.ContainerRestartRules),
 	framework.WithFeatureGate(features.RestartAllContainersOnContainerExits),
 	func() {

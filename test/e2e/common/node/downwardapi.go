@@ -317,7 +317,7 @@ var _ = SIGDescribe("Downward API", func() {
 	})
 })
 
-var _ = SIGDescribe("Downward API", framework.WithSerial(), framework.WithDisruptive(), feature.DownwardAPIHugePages, func() {
+var _ = SIGDescribe("Downward API", framework.WithSerial(), feature.DownwardAPIHugePages, func() {
 	f := framework.NewDefaultFramework("downward-api")
 	f.NamespacePodSecurityLevel = admissionapi.LevelPrivileged
 

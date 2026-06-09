@@ -55,7 +55,7 @@ const (
 	rebootPodReadyAgainTimeout = 5 * time.Minute
 )
 
-var _ = SIGDescribe("Reboot", framework.WithDisruptive(), feature.Reboot, func() {
+var _ = SIGDescribe("Reboot", feature.Reboot, func() {
 	var f *framework.Framework
 
 	ginkgo.BeforeEach(func() {

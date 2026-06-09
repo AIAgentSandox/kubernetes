@@ -331,7 +331,7 @@ func verifyMemoryManagerAllocations(ctx context.Context, pod *v1.Pod, expectedGu
 }
 
 // Serial because the test updates kubelet configuration.
-var _ = SIGDescribe("Memory Manager", "[LinuxOnly]", framework.WithDisruptive(), framework.WithSerial(), feature.MemoryManager, func() {
+var _ = SIGDescribe("Memory Manager", "[LinuxOnly]", framework.WithSerial(), feature.MemoryManager, func() {
 	// TODO: add more complex tests that will include interaction between CPUManager, MemoryManager and TopologyManager
 	var (
 		allNUMANodes             []int
@@ -820,7 +820,7 @@ func configureMemoryManagerInKubelet(oldCfg *kubeletconfig.KubeletConfiguration,
 	return newCfg
 }
 
-var _ = SIGDescribe("Memory Manager Pod Level Resources", ginkgo.Ordered, ginkgo.ContinueOnFailure, framework.WithDisruptive(), framework.WithSerial(), feature.MemoryManager, feature.PodLevelResources, feature.PodLevelResourceManagers, framework.WithFeatureGate(features.PodLevelResources), framework.WithFeatureGate(features.PodLevelResourceManagers), func() {
+var _ = SIGDescribe("Memory Manager Pod Level Resources", ginkgo.Ordered, ginkgo.ContinueOnFailure, framework.WithSerial(), feature.MemoryManager, feature.PodLevelResources, feature.PodLevelResourceManagers, framework.WithFeatureGate(features.PodLevelResources), framework.WithFeatureGate(features.PodLevelResourceManagers), func() {
 	f := framework.NewDefaultFramework("memory-manager-pod-level-resources")
 	f.NamespacePodSecurityLevel = admissionapi.LevelPrivileged
 

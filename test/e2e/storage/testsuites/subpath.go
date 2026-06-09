@@ -337,7 +337,7 @@ func (s *subPathTestSuite) DefineTests(driver storageframework.TestDriver, patte
 		testPodContainerRestart(ctx, f, l.pod)
 	})
 
-	f.It("should unmount if pod is gracefully deleted while kubelet is down", f.WithDisruptive(), f.WithSlow(), "[LinuxOnly]", func(ctx context.Context) {
+	f.It("should unmount if pod is gracefully deleted while kubelet is down", f.WithSlow(), "[LinuxOnly]", func(ctx context.Context) {
 		e2eskipper.SkipUnlessSSHKeyPresent()
 		init(ctx)
 		ginkgo.DeferCleanup(cleanup)
@@ -350,7 +350,7 @@ func (s *subPathTestSuite) DefineTests(driver storageframework.TestDriver, patte
 		testSubpathReconstruction(ctx, f, l.hostExec, l.pod, false)
 	})
 
-	f.It("should unmount if pod is force deleted while kubelet is down", f.WithDisruptive(), f.WithSlow(), "[LinuxOnly]", func(ctx context.Context) {
+	f.It("should unmount if pod is force deleted while kubelet is down", f.WithSlow(), "[LinuxOnly]", func(ctx context.Context) {
 		e2eskipper.SkipUnlessSSHKeyPresent()
 		init(ctx)
 		ginkgo.DeferCleanup(cleanup)
@@ -960,7 +960,7 @@ func TestPodContainerRestartWithConfigmapModified(ctx context.Context, f *framew
 func testSubpathReconstruction(ctx context.Context, f *framework.Framework, hostExec storageutils.HostExec, pod *v1.Pod, forceDelete bool) {
 	// This is mostly copied from TestVolumeUnmountsFromDeletedPodWithForceOption()
 
-	// Disruptive test run serially, we can cache all voluem global mount
+	// Run serially so we can cache all voluem global mount
 	// points and verify after the test that we do not leak any global mount point.
 	nodeList, err := e2enode.GetReadySchedulableNodes(ctx, f.ClientSet)
 	framework.ExpectNoError(err, "while listing schedulable nodes")

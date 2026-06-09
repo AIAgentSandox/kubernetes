@@ -1204,7 +1204,7 @@ var _ = common.SIGDescribe("Services", func() {
 		framework.ExpectNoError(verifyServeHostnameServiceUp(ctx, cs, ns, podNames, svc.Spec.ClusterIP, servicePort))
 	})
 
-	f.It("should work after restarting kube-proxy", f.WithDisruptive(), func(ctx context.Context) {
+	f.It("should work after restarting kube-proxy", func(ctx context.Context) {
 		kubeProxyLabelSet := map[string]string{clusterAddonLabelKey: kubeProxyLabelName}
 		e2eskipper.SkipUnlessComponentRunsAsPodsAndClientCanDeleteThem(ctx, kubeProxyLabelName, cs, metav1.NamespaceSystem, kubeProxyLabelSet)
 
@@ -1237,7 +1237,7 @@ var _ = common.SIGDescribe("Services", func() {
 		framework.ExpectNoError(verifyServeHostnameServiceUp(ctx, cs, ns, podNames2, svc2IP, servicePort))
 	})
 
-	f.It("should work after restarting apiserver", f.WithDisruptive(), func(ctx context.Context) {
+	f.It("should work after restarting apiserver", func(ctx context.Context) {
 
 		e2eskipper.SkipUnlessComponentRunsAsPodsAndClientCanDeleteThem(ctx, kubeAPIServerLabelName, cs, metav1.NamespaceSystem, map[string]string{clusterComponentKey: kubeAPIServerLabelName})
 

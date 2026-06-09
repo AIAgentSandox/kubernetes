@@ -49,7 +49,7 @@ const (
 	evictionPodNamespaceBaseName = "eviction-test-windows"
 )
 
-var _ = sigDescribe(feature.Windows, "Eviction", framework.WithSerial(), framework.WithSlow(), framework.WithDisruptive(), func() {
+var _ = sigDescribe(feature.Windows, "Eviction", framework.WithSerial(), framework.WithSlow(), func() {
 	ginkgo.BeforeEach(func() {
 		e2eskipper.SkipUnlessNodeOSDistroIs("windows")
 	})

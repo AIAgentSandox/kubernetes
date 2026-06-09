@@ -60,14 +60,14 @@ Remove the tag from every test `Describe`/`Context`/`It`/`SIGDescribe`/`Conforma
 **Files:**
 - Modify: All 53 call-site files listed in the Context section above (`test/e2e/...`, `test/e2e_node/...`). Treat the grep result for `\b(framework|f)\.WithDisruptive\(\)` as authoritative — every occurrence in non-comment code is to be removed.
 
-- [ ] For each call, delete the `framework.WithDisruptive()` (or `f.WithDisruptive()`) argument and tidy adjacent whitespace/commas; preserve all other tags, the literal text descriptor, the body function, and any `ginkgo.Ordered` / `feature.*` / `WithFeatureGate(...)` arguments.
-- [ ] In `test/e2e/storage/testsuites/disruptive.go`: drop only `framework.WithDisruptive()` from `TestSuiteInfo.TestTags`, keeping `framework.WithLabel("LinuxOnly")`. Do not rename the file, type, or `InitDisruptiveTestSuite` symbols — that is a domain-named storage suite, not the tag.
-- [ ] Where a callsite's only tags were `WithDisruptive()` (e.g. `framework.WithDisruptive()` solo on `SIGDescribe`/`utils.SIGDescribe`), check the resulting call still has either a string literal name first or another valid arg — Ginkgo requires the description; do not leave a bare `SIGDescribe(func() {...})`.
-- [ ] Update the prose comment at `test/e2e/storage/testsuites/subpath.go:963` ("Disruptive test run serially…") to a tag-neutral wording (e.g. "Run serially so we can…"); preserve the actual test logic.
-- [ ] Update the prose comment at `test/e2e_node/lock_contention_linux_test.go:37` (`// Disruptive because the kubelet is restarted in the test.`) to a wording that no longer implies a tag (e.g. "Restarts the kubelet during the test.").
-- [ ] Update the prose comment at `test/e2e/node/node_problem_detector.go:101` to drop the `Disruptive` reference (e.g. "This test is not marked as Serial…") while keeping the kept guidance about not restarting the kubelet.
-- [ ] Run `go build ./test/...` and `go vet ./test/...` to confirm the tree compiles with the call-site changes alone (the framework helper still exists and remains exported until Task 4).
-- [ ] Spot-check at least one test per directory family (e.g. one in `test/e2e/storage`, `test/e2e/network`, `test/e2e/cloud/gcp`, `test/e2e_node`) with `gofmt -d` to confirm no stray commas/whitespace.
+- [x] For each call, delete the `framework.WithDisruptive()` (or `f.WithDisruptive()`) argument and tidy adjacent whitespace/commas; preserve all other tags, the literal text descriptor, the body function, and any `ginkgo.Ordered` / `feature.*` / `WithFeatureGate(...)` arguments.
+- [x] In `test/e2e/storage/testsuites/disruptive.go`: drop only `framework.WithDisruptive()` from `TestSuiteInfo.TestTags`, keeping `framework.WithLabel("LinuxOnly")`. Do not rename the file, type, or `InitDisruptiveTestSuite` symbols — that is a domain-named storage suite, not the tag.
+- [x] Where a callsite's only tags were `WithDisruptive()` (e.g. `framework.WithDisruptive()` solo on `SIGDescribe`/`utils.SIGDescribe`), check the resulting call still has either a string literal name first or another valid arg — Ginkgo requires the description; do not leave a bare `SIGDescribe(func() {...})`.
+- [x] Update the prose comment at `test/e2e/storage/testsuites/subpath.go:963` ("Disruptive test run serially…") to a tag-neutral wording (e.g. "Run serially so we can…"); preserve the actual test logic.
+- [x] Update the prose comment at `test/e2e_node/lock_contention_linux_test.go:37` (`// Disruptive because the kubelet is restarted in the test.`) to a wording that no longer implies a tag (e.g. "Restarts the kubelet during the test.").
+- [x] Update the prose comment at `test/e2e/node/node_problem_detector.go:101` to drop the `Disruptive` reference (e.g. "This test is not marked as Serial…") while keeping the kept guidance about not restarting the kubelet.
+- [x] Run `go build ./test/...` and `go vet ./test/...` to confirm the tree compiles with the call-site changes alone (the framework helper still exists and remains exported until Task 4).
+- [x] Spot-check at least one test per directory family (e.g. one in `test/e2e/storage`, `test/e2e/network`, `test/e2e/cloud/gcp`, `test/e2e_node`) with `gofmt -d` to confirm no stray commas/whitespace.
 
 ### Task 2: Update the framework bugs unit-test fixture and golden output
 The `bugs` unit test exercises the wrapper's bookkeeping (label sets, output rendering). Remove `framework.WithDisruptive()` from the fixture call and drop `[Disruptive]` / `Disruptive` from the embedded golden strings so the test still passes.

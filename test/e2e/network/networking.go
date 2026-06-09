@@ -545,7 +545,7 @@ var _ = common.SIGDescribe("Networking", func() {
 
 	})
 
-	f.It("should recreate its iptables rules if they are deleted", f.WithDisruptive(), func(ctx context.Context) {
+	f.It("should recreate its iptables rules if they are deleted", func(ctx context.Context) {
 		e2eskipper.SkipUnlessProviderIs(framework.ProvidersWithSSH...)
 		e2eskipper.SkipUnlessSSHKeyPresent()
 

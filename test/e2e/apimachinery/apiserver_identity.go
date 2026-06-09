@@ -84,7 +84,7 @@ var _ = SIGDescribe("kube-apiserver identity", feature.APIServerIdentity, func()
 	f := framework.NewDefaultFramework("kube-apiserver-identity")
 	f.NamespacePodSecurityLevel = admissionapi.LevelPrivileged
 
-	f.It("kube-apiserver identity should persist after restart", f.WithDisruptive(), func(ctx context.Context) {
+	f.It("kube-apiserver identity should persist after restart", func(ctx context.Context) {
 		e2eskipper.SkipUnlessProviderIs("gce")
 
 		client := f.ClientSet
