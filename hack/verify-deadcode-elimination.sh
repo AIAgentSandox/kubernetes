@@ -27,15 +27,15 @@ source "${KUBE_ROOT}/hack/lib/init.sh"
 
 kube::golang::setup_env
 
+# Ensure that we find the binaries we build before anything else.
 export GOBIN="${KUBE_OUTPUT_BIN}"
+PATH="${GOBIN}:${PATH}"
 
 # Install whydeadcode
 go install github.com/aarzilli/whydeadcode@latest
 
-# Use the full path rather than prepending ${GOBIN} to PATH, because
-# ${GOBIN} also contains tools like `sort` (the kube metrics sort tool)
-# that would shadow coreutils binaries that `make` recipes rely on.
-WHYDEADCODE_BIN="${GOBIN}/whydeadcode"
+# Prefer full path for running zeitgeist
+WHYDEADCODE_BIN="$(which whydeadcode)"
 
 pushd "${KUBE_ROOT}"
 

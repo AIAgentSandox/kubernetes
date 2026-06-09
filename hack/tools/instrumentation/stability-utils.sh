@@ -58,6 +58,7 @@ function find_test_files() {
       "$@"
 }
 
+
 function kube::validate::stablemetrics() {
   stability_check_setup
   temp_file=$(mktemp)
