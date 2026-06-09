@@ -96,12 +96,12 @@ func TestImageServiceBuildValidatesRequiredOptions(t *testing.T) {
 	_, err := NewRemoteImageServiceBuilder().
 		WithConnectionTimeout(defaultConnectionTimeout).
 		Build(ctx)
-	assert.ErrorContains(t, err, "endpoint is required")
+	require.ErrorContains(t, err, "endpoint is required")
 
 	_, err = NewRemoteImageServiceBuilder().
 		WithEndpoint("unix:///tmp/cri-client-test.sock").
 		Build(ctx)
-	assert.ErrorContains(t, err, "connectionTimeout must be positive")
+	require.ErrorContains(t, err, "connectionTimeout must be positive")
 }
 
 func TestNewRemoteImageServiceUnixSocketEndpoint(t *testing.T) {
