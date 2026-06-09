@@ -37,7 +37,7 @@ To run just those tests for the example above, put that content into
 `/tmp/hostpath-testdriver.yaml`, ensure `e2e.test` is in your PATH or current directory (downloaded from a test tarball like https://dl.k8s.io/release/v1.14.0/kubernetes-test-linux-amd64.tar.gz or built via `make WHAT=test/e2e/e2e.test`), and invoke:
 
     ginkgo -p -focus='External.Storage.*hostpath.csi.k8s.io' \
-           -skip='\[Feature:|\[Disruptive\]' \
+           -skip='\[Feature:' \
            e2e.test \
            -- \
            -storage.testdriver=/tmp/hostpath-testdriver.yaml
@@ -47,7 +47,6 @@ must be run by selecting them explicitly in an environment that
 supports them, for example snapshotting:
 
     ginkgo -p -focus='External.Storage.*hostpath.csi.k8s.io.*\[Feature:VolumeSnapshotDataSource\]' \
-           -skip='\[Disruptive\]' \
            e2e.test \
            -- \
            -storage.testdriver=/tmp/hostpath-testdriver.yaml

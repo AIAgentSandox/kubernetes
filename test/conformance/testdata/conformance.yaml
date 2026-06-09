@@ -2465,14 +2465,14 @@
   file: test/e2e/common/node/lease.go
 - testname: Pod Eviction, Toleration limits
   codename: '[sig-node] NoExecuteTaintManager Multiple Pods evicts pods with minTolerationSeconds
-    [Conformance] [Disruptive] [Serial]'
+    [Conformance] [Serial]'
   description: In a multi-pods scenario with tolerationSeconds, the pods MUST be evicted
     as per the toleration time limit.
   release: v1.16
   file: test/e2e/node/taints.go
 - testname: Taint, Pod Eviction on taint removal
   codename: '[sig-node] NoExecuteTaintManager Single Pod removing taint cancels eviction
-    [Conformance] [Disruptive] [Serial]'
+    [Conformance] [Serial]'
   description: The Pod with toleration timeout scheduled on a tainted Node MUST not
     be evicted if the taint is removed before toleration time ends.
   release: v1.16

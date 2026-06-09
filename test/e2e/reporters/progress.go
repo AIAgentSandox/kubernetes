@@ -44,7 +44,7 @@ import (
 // {"msg":"Test Suite starting","total":5,"completed":0,"skipped":0,"failed":0}
 // {"msg":"FAILED [sig-node] NoExecuteTaintManager Single Pod doesn't evict pod with tolerations from tainted nodes","total":0,"completed":0,"skipped":1332,"failed":1,"failures":["[sig-node] NoExecuteTaintManager..."]}
 // {"msg":"FAILED [sig-node] NoExecuteTaintManager Single Pod evicts pods from tainted nodes","total":5,"completed":0,"skipped":2524,"failed":1,"failures":["[sig-node] NoExecuteTaintManager Single Pod evicts pods from tainted nodes"]}
-// {"msg":"PASSED [sig-node] NoExecuteTaintManager Single Pod removing taint cancels eviction [Disruptive] [Conformance]","total":0,"completed":1,"skipped":1181,"failed":0}
+// {"msg":"PASSED [sig-node] NoExecuteTaintManager Single Pod removing taint cancels eviction [Conformance]","total":0,"completed":1,"skipped":1181,"failed":0}
 // {"msg":"Test Suite completed","total":0,"completed":1,"skipped":2592,"failed":0}
 // {"msg":"PASSED [sig-node] NoExecuteTaintManager Single Pod eventually evict pod with finite tolerations from tainted nodes","total":0,"completed":1,"skipped":1399,"failed":1,"failures":["[sig-node] NoExecuteTaintManager..."]}
 // {"msg":"Test Suite completed","total":0,"completed":1,"skipped":1399,"failed":1,"failures":["[sig-node] NoExecuteTaintManager Single Pod doesn't evict pod with tolerations from tainted nodes"]}

@@ -112,11 +112,11 @@ The two Conformance tests in `test/e2e/node/taints.go` previously emitted `[Disr
 - Modify: `test/e2e/storage/external/README.md`
 - Modify: `test/e2e/reporters/progress.go`
 
-- [ ] Run `test/conformance/gen-conformance-yaml.sh` (or the documented make target — confirm by reading `test/conformance/README.md` if needed) and let it rewrite `test/conformance/testdata/conformance.yaml`. Confirm via `grep Disruptive test/conformance/testdata/conformance.yaml` that no entries remain.
-- [ ] In `test/e2e/storage/external/README.md`, update the two `ginkgo` example invocations (lines 40 and 50) so the `-skip` regex no longer references `\[Disruptive\]` (drop the `Disruptive` alternative; keep `\[Feature:...\]` where it appears).
-- [ ] In `test/e2e/reporters/progress.go`, update the comment example log line (around line 47) to a representative test name that does not embed `[Disruptive]` (e.g. swap to one of the post-cleanup codenames or simply drop the ` [Disruptive]` token from the example).
-- [ ] Run `hack/verify-conformance-yaml.sh` (and `hack/verify-gofmt.sh`, `hack/verify-govet.sh` if part of the standard local verify set) to confirm parity with CI.
-- [ ] Final sanity sweep: `Grep` the repo for `Disruptive` and confirm the only remaining matches are in `CHANGELOG/CHANGELOG-1.17.md` (intentionally untouched).
+- [x] Run `test/conformance/gen-conformance-yaml.sh` (or the documented make target — confirm by reading `test/conformance/README.md` if needed) and let it rewrite `test/conformance/testdata/conformance.yaml`. Confirm via `grep Disruptive test/conformance/testdata/conformance.yaml` that no entries remain. [ran hack/update-conformance-yaml.sh; only the two taints.go codenames changed]
+- [x] In `test/e2e/storage/external/README.md`, update the two `ginkgo` example invocations (lines 40 and 50) so the `-skip` regex no longer references `\[Disruptive\]` (drop the `Disruptive` alternative; keep `\[Feature:...\]` where it appears).
+- [x] In `test/e2e/reporters/progress.go`, update the comment example log line (around line 47) to a representative test name that does not embed `[Disruptive]` (e.g. swap to one of the post-cleanup codenames or simply drop the ` [Disruptive]` token from the example).
+- [x] Run `hack/verify-conformance-yaml.sh` (and `hack/verify-gofmt.sh`, `hack/verify-govet.sh` if part of the standard local verify set) to confirm parity with CI. [verify-conformance-yaml PASS, verify-gofmt PASS, go vet ./test/e2e/reporters/... clean]
+- [x] Final sanity sweep: `Grep` the repo for `Disruptive` and confirm the only remaining matches are in `CHANGELOG/CHANGELOG-1.17.md` (intentionally untouched). [plus the intentionally-kept domain-named storage suite `InitDisruptiveTestSuite` in disruptive.go/base.go per Question 1 Option A]
 
 ## Questions
 
