@@ -1725,6 +1725,7 @@ func TestAllocationManagerAddPodWithPLR(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
+			tCtx := ktesting.Init(t)
 			featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.InPlacePodLevelResourcesVerticalScaling, tc.ipprPLRFeatureGate)
 			allocationManager := makeAllocationManager(t, &containertest.FakeRuntime{}, []*v1.Pod{}, nil)
 
@@ -1755,7 +1756,7 @@ func TestAllocationManagerAddPodWithPLR(t *testing.T) {
 				allocationManager.AddPodAdmitHandlers(lifecycle.PodAdmitHandlers{handler})
 			}
 
-			ok, reason, message := allocationManager.AddPod(tc.currentActivePods, tc.podToAdd)
+			ok, reason, message := allocationManager.AddPod(tCtx, tc.currentActivePods, tc.podToAdd)
 			require.Equal(t, tc.expectAdmit, ok)
 			require.Equal(t, tc.admissionFailureReason, reason)
 			require.Equal(t, tc.admissionFailureMessage, message)
@@ -2011,7 +2012,7 @@ func TestAllocationManagerAddPod(t *testing.T) {
 				allocationManager.AddPodAdmitHandlers(lifecycle.PodAdmitHandlers{handler})
 			}
 
-			ok, reason, message := allocationManager.AddPod(tc.currentActivePods, tc.podToAdd)
+			ok, reason, message := allocationManager.AddPod(context.Background(), tc.currentActivePods, tc.podToAdd)
 			require.Equal(t, tc.expectAdmit, ok)
 			require.Equal(t, tc.admissionFailureReason, reason)
 			require.Equal(t, tc.admissionFailureMessage, message)
@@ -2420,7 +2421,6 @@ func TestRecordPodDeferredAcceptedResizes(t *testing.T) {
 
 func makeAllocationManager(t *testing.T, runtime *containertest.FakeRuntime, allocatedPods []*v1.Pod, nodeConfig *cm.NodeConfig) Manager {
 	t.Helper()
-	logger, _ := ktesting.NewTestContext(t)
 	statusManager := status.NewManager(&fake.Clientset{}, kubepod.NewBasicPodManager(), &statustest.FakePodDeletionSafetyProvider{}, kubeletutil.NewPodStartupLatencyTracker())
 	var containerManager *cm.FakeContainerManager
 	if nodeConfig == nil {
@@ -2467,7 +2467,7 @@ func makeAllocationManager(t *testing.T, runtime *containertest.FakeRuntime, all
 	}
 
 	predicateHandler := lifecycle.NewPredicateAdmitHandler(getNode, lifecycle.NewAdmissionFailureHandlerStub(), containerManager.UpdatePluginResources)
-	resizeHandler := NewPodResizesAdmitHandler(containerManager, runtime, allocationManager, logger)
+	resizeHandler := NewPodResizesAdmitHandler(containerManager, runtime, allocationManager)
 	allocationManager.AddPodAdmitHandlers(lifecycle.PodAdmitHandlers{resizeHandler, predicateHandler})
 	return allocationManager
 }
