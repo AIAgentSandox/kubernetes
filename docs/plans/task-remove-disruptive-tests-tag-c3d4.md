@@ -97,12 +97,12 @@ With every caller removed, delete the public API and the wrapper's bookkeeping e
 **Files:**
 - Modify: `test/e2e/framework/ginkgowrapper.go`
 
-- [ ] Remove the line `"Disruptive",` from the `leafNodeLabels` set initializer (around line 278).
-- [ ] Remove `"Disruptive"` from the `deprecatedTags` set initializer (around line 430). Keep the other entries (`Conformance`, `Flaky`, `NodeConformance`, `Serial`, `Slow`) intact.
-- [ ] Delete the `WithDisruptive()` package function, the `(*Framework).WithDisruptive()` method, and the private `withDisruptive()` helper (lines 675–690) along with their preceding doc comment.
-- [ ] Update the doc comments in `test/e2e/storage/framework/testpattern.go:86` and `test/e2e/storage/framework/testsuite.go:83` so the example reads `framework.WithSlow()` (or another still-extant helper) instead of `framework.WithDisruptive()`.
-- [ ] Run `go build ./...` to confirm no stragglers. Any compile error here points to a missed call site in Task 1.
-- [ ] Run `go test ./test/e2e/framework/...` and `go test ./test/e2e/framework/internal/unittests/...`.
+- [x] Remove the line `"Disruptive",` from the `leafNodeLabels` set initializer (around line 278).
+- [x] Remove `"Disruptive"` from the `deprecatedTags` set initializer (around line 430). Keep the other entries (`Conformance`, `Flaky`, `NodeConformance`, `Serial`, `Slow`) intact.
+- [x] Delete the `WithDisruptive()` package function, the `(*Framework).WithDisruptive()` method, and the private `withDisruptive()` helper (lines 675–690) along with their preceding doc comment.
+- [x] Update the doc comments in `test/e2e/storage/framework/testpattern.go:86` and `test/e2e/storage/framework/testsuite.go:83` so the example reads `framework.WithSlow()` (or another still-extant helper) instead of `framework.WithDisruptive()`.
+- [x] Run `go build ./...` to confirm no stragglers. Any compile error here points to a missed call site in Task 1.
+- [x] Run `go test ./test/e2e/framework/...` and `go test ./test/e2e/framework/internal/unittests/...`.
 
 ### Task 5: Regenerate the conformance YAML and clean docs/comments
 The two Conformance tests in `test/e2e/node/taints.go` previously emitted `[Disruptive]` into their codenames; after Task 1 they no longer do, so the generated `conformance.yaml` will diverge. Regenerate it and clean up the remaining doc/comment references.

@@ -83,7 +83,7 @@ func (t TestSnapshotDeletionPolicy) String() string {
 // TestPattern represents a combination of parameters to be tested in a TestSuite
 type TestPattern struct {
 	Name                   string                      // Name of TestPattern
-	TestTags               []interface{}               // additional parameters for framework.It, like framework.WithDisruptive()
+	TestTags               []interface{}               // additional parameters for framework.It, like framework.WithSlow()
 	VolType                TestVolType                 // Volume type of the volume
 	FsType                 string                      // Fstype of the volume
 	VolMode                v1.PersistentVolumeMode     // PersistentVolumeMode of the volume

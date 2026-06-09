@@ -275,7 +275,6 @@ func transformGinkgoNodeArgs(nodeType types.NodeType, offset ginkgo.Offset, text
 // they simply aren't known upfront.
 var leafNodeLabels = sets.New[string](
 	"Conformance",
-	"Disruptive",
 	"Feature:OffByDefault",
 	"Flaky",
 	"NodeConformance",
@@ -427,7 +426,7 @@ func expandGinkgoArgs(leafNode bool, offset ginkgo.Offset, text string, args []a
 
 var (
 	tagRe                 = regexp.MustCompile(`\[.*?\]`)
-	deprecatedTags        = sets.New("Conformance", "Flaky", "NodeConformance", "Disruptive", "Serial", "Slow")
+	deprecatedTags        = sets.New("Conformance", "Flaky", "NodeConformance", "Serial", "Slow")
 	deprecatedTagPrefixes = sets.New("Environment", "Feature", "NodeFeature", "FeatureGate")
 	deprecatedStability   = sets.New("Alpha", "Beta")
 )
@@ -670,23 +669,6 @@ func (f *Framework) WithNodeConformance() interface{} {
 
 func withNodeConformance() interface{} {
 	return newLabel("NodeConformance")
-}
-
-// WithDisruptive specifies that a certain test or group of tests temporarily
-// affects the functionality of the Kubernetes cluster. The return value must
-// be passed as additional argument to [framework.It], [framework.Describe],
-// [framework.Context].
-func WithDisruptive() interface{} {
-	return withDisruptive()
-}
-
-// WithDisruptive is a shorthand for the corresponding package function.
-func (f *Framework) WithDisruptive() interface{} {
-	return withDisruptive()
-}
-
-func withDisruptive() interface{} {
-	return newLabel("Disruptive")
 }
 
 // WithSerial specifies that a certain test or group of tests must not run in

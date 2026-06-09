@@ -80,7 +80,7 @@ func DefineTestSuites(driver TestDriver, tsInits []func() TestSuite) {
 // TestSuiteInfo represents a set of parameters for TestSuite
 type TestSuiteInfo struct {
 	Name               string              // name of the TestSuite
-	TestTags           []interface{}       // additional parameters for framework.It, like framework.WithDisruptive()
+	TestTags           []interface{}       // additional parameters for framework.It, like framework.WithSlow()
 	TestPatterns       []TestPattern       // Slice of TestPattern for the TestSuite
 	SupportedSizeRange e2evolume.SizeRange // Size range supported by the test suite
 }
