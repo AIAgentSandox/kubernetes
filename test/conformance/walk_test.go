@@ -180,7 +180,7 @@ func TestValidateTestName(t *testing.T) {
 			"",
 		},
 		{
-			"a test case with valid tags [LinuxOnly] [NodeConformance] [Serial] [Disruptive]",
+			"a test case with valid tags [LinuxOnly] [NodeConformance] [Serial]",
 			"",
 		},
 		{
@@ -200,7 +200,7 @@ func TestValidateTestName(t *testing.T) {
 			"[Flaky],[Feature:Awesome],[Alpha]",
 		},
 		{
-			"[sig-awesome] [Alpha] [Disruptive] a test case with valid and invalid tags [Serial] [Flaky]",
+			"[sig-awesome] [Alpha] a test case with valid and invalid tags [Serial] [Flaky]",
 			"[Alpha],[Flaky]",
 		},
 	}

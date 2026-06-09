@@ -87,9 +87,9 @@ The `bugs` unit test exercises the wrapper's bookkeeping (label sets, output ren
 **Files:**
 - Modify: `test/conformance/walk_test.go`
 
-- [ ] Edit the test case at `walk_test.go:183` so the input becomes `"a test case with valid tags [LinuxOnly] [NodeConformance] [Serial]"` (still no expected error).
-- [ ] Edit the test case at `walk_test.go:203`: drop ` [Disruptive]` from the input string; leave the `tagString` expectation `"[Alpha],[Flaky]"` unchanged (the case is verifying ineligible-tag detection, not Disruptive).
-- [ ] Run `go test ./test/conformance/...` (excluding the conformance.yaml diff check, which is handled in Task 5).
+- [x] Edit the test case at `walk_test.go:183` so the input becomes `"a test case with valid tags [LinuxOnly] [NodeConformance] [Serial]"` (still no expected error).
+- [x] Edit the test case at `walk_test.go:203`: drop ` [Disruptive]` from the input string; leave the `tagString` expectation `"[Alpha],[Flaky]"` unchanged (the case is verifying ineligible-tag detection, not Disruptive).
+- [x] Run `go test ./test/conformance/...` (excluding the conformance.yaml diff check, which is handled in Task 5).
 
 ### Task 4: Delete `WithDisruptive` from the framework wrapper
 With every caller removed, delete the public API and the wrapper's bookkeeping entries for `"Disruptive"`.
