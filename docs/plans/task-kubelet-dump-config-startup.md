@@ -130,10 +130,10 @@ the effective merged `KubeletConfiguration`, while preserving the node-specific
 **Files:**
 - Modify: `cmd/kubelet/app/server.go`, `cmd/kubelet/app/server_test.go`
 
-- [ ] Run `gofmt -w` on the changed files and `go vet ./cmd/kubelet/...`.
-- [ ] Run `go test ./cmd/kubelet/app/...` and ensure all tests pass.
-- [ ] Run `go build ./cmd/kubelet/...` to confirm the kubelet still builds.
-- [ ] Ensure a code comment near the new dump references issue #122736 (misleading CLI
-  parameter logging) so future readers understand the rationale.
-- [ ] Confirm no change to `/configz` HTTP behavior, flag parsing, or precedence — the
-  change is logging-only.
+- [x] Run `gofmt -w` on the changed files and `go vet ./cmd/kubelet/...`. (gofmt -l reports no issues; go vet clean.)
+- [x] Run `go test ./cmd/kubelet/app/...` and ensure all tests pass. (All pass, incl. TestMarshalKubeletConfigForLog and TestMergeKubeletConfigurations.)
+- [x] Run `go build ./cmd/kubelet/...` to confirm the kubelet still builds. (Builds successfully.)
+- [x] Ensure a code comment near the new dump references issue #122736 (misleading CLI
+  parameter logging) so future readers understand the rationale. (Referenced at server.go:260 and in marshalKubeletConfigForLog doc comment.)
+- [x] Confirm no change to `/configz` HTTP behavior, flag parsing, or precedence — the
+  change is logging-only. (setConfigz still calls cz.Set(versioned); PrintFlags still called; precedence untouched.)
