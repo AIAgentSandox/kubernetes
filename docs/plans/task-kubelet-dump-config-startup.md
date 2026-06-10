@@ -102,23 +102,24 @@ the effective merged `KubeletConfiguration`, while preserving the node-specific
 **Files:**
 - Modify: `cmd/kubelet/app/server.go`
 
-- [ ] At the startup site (currently line ~252, after logging init and after the
+- [x] At the startup site (currently line ~252, after logging init and after the
   config/flag merge + precedence), call `marshalKubeletConfigForLog(kubeletConfig)` and log
   the result, e.g. `logger.Info("Effective KubeletConfiguration", "config", <yaml string>)`
   (use `klog`/`logger` already in scope). Log a clear, greppable header so operators can
   find it. On marshal error, log the error and fall back to the previous behavior so
   startup never fails because of logging.
-- [ ] Move the raw `cliflag.PrintFlags(cleanFlagSet)` call to a more verbose level so the
+- [x] Move the raw `cliflag.PrintFlags(cleanFlagSet)` call to a more verbose level so the
   node-specific `KubeletFlags` (hostname-override, kubeconfig, node-ip, cert-dir, etc.)
   remain available for debugging but no longer present misleading config-flag values as the
   primary startup output. (PrintFlags logs at V(1); keep that, but the effective-config dump
   is the authoritative, always-visible startup line. Add a short comment referencing issue
   #122736 explaining why flags alone are misleading.)
-- [ ] Confirm the existing `logger.V(5).Info("KubeletConfiguration", ...)` masked dump at
+- [x] Confirm the existing `logger.V(5).Info("KubeletConfiguration", ...)` masked dump at
   line ~301 is now redundant with the new dump; either remove it or keep it — if kept,
   ensure the two do not duplicate confusingly (prefer reusing `marshalKubeletConfigForLog`
-  there too). Document the decision in a comment.
-- [ ] Write/update tests: add a test that drives the merge path (reuse the
+  there too). Document the decision in a comment. (Removed the redundant V(5) dump and its
+  masking block; documented the removal in a comment.)
+- [x] Write/update tests: add a test that drives the merge path (reuse the
   `TestMergeKubeletConfigurations` fixtures: a base `--config` value overridden by a
   drop-in `.conf` file) and asserts that `marshalKubeletConfigForLog` on the resulting
   merged config reflects the **post-merge** effective value, not the pre-merge default —

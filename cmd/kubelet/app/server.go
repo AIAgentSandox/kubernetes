@@ -250,6 +250,24 @@ is checked every 20 seconds (also configurable with a flag).`,
 			if err := logsapi.ValidateAndApplyAsField(&kubeletConfig.Logging, utilfeature.DefaultFeatureGate, field.NewPath("logging")); err != nil {
 				return fmt.Errorf("initialize logging: %v", err)
 			}
+			// Dump the full effective KubeletConfiguration at startup. Printing the raw
+			// command-line flags (cliflag.PrintFlags, below) is misleading: flags that mirror
+			// KubeletConfiguration fields are parsed before --config / --config-dir are merged
+			// and flag precedence is re-enforced, so they can show stale values that do not
+			// match what the kubelet actually runs with. The effective configuration logged
+			// here reflects all overrides (defaults, the --config file, drop-in --config-dir
+			// files, and command-line flag precedence) and is serialized exactly like /configz.
+			// See kubernetes/kubernetes #122736.
+			if cfgStr, err := marshalKubeletConfigForLog(kubeletConfig); err != nil {
+				// Never fail startup because of logging; fall back to flags only.
+				logger.Error(err, "Failed to marshal effective KubeletConfiguration for logging")
+			} else {
+				logger.Info("Effective KubeletConfiguration", "config", cfgStr)
+			}
+			// Print the raw flags at a more verbose level (PrintFlags logs at klog.V(1)).
+			// Node-specific flags that are not part of KubeletConfiguration (e.g.
+			// --hostname-override, --kubeconfig, --node-ip, --cert-dir) come straight from the
+			// command line and remain accurate, so they stay available for debugging.
 			cliflag.PrintFlags(cleanFlagSet)
 
 			// We always validate the local configuration (command line + config file).
@@ -285,12 +303,6 @@ is checked every 20 seconds (also configurable with a flag).`,
 				logger.Error(err, "Kubelet running with insufficient permissions")
 			}
 
-			// make the kubelet's config safe for logging
-			config := kubeletServer.KubeletConfiguration.DeepCopy()
-			for k := range config.StaticPodURLHeader {
-				config.StaticPodURLHeader[k] = []string{"<masked>"}
-			}
-
 			// Log skipped drop-in files if any were encountered during configuration merge
 			if len(skippedDropinFiles) > 0 {
 				for _, skippedFile := range skippedDropinFiles {
@@ -298,8 +310,9 @@ is checked every 20 seconds (also configurable with a flag).`,
 				}
 			}
 
-			// log the kubelet's config for inspection
-			logger.V(5).Info("KubeletConfiguration", "configuration", klog.Format(config))
+			// The effective (masked) KubeletConfiguration is dumped at startup above via
+			// marshalKubeletConfigForLog ("Effective KubeletConfiguration"); the previous
+			// V(5) masked dump here is therefore redundant and has been removed.
 
 			// set up signal context for kubelet shutdown
 			ctx := genericapiserver.SetupSignalContext()
