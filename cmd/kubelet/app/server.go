@@ -259,7 +259,7 @@ is checked every 20 seconds (also configurable with a flag).`,
 			// files, and command-line flag precedence) and is serialized exactly like /configz.
 			// See kubernetes/kubernetes #122736.
 			if cfgStr, err := marshalKubeletConfigForLog(kubeletConfig); err != nil {
-				// Never fail startup because of logging; fall back to flags only.
+				// Logging must never block startup; log the error and continue.
 				logger.Error(err, "Failed to marshal effective KubeletConfiguration for logging")
 			} else {
 				logger.Info("Effective KubeletConfiguration", "config", cfgStr)
@@ -309,10 +309,6 @@ is checked every 20 seconds (also configurable with a flag).`,
 					logger.V(4).Info("Skipped file in drop-in directory (does not have .conf extension)", "file", skippedFile)
 				}
 			}
-
-			// The effective (masked) KubeletConfiguration is dumped at startup above via
-			// marshalKubeletConfigForLog ("Effective KubeletConfiguration"); the previous
-			// V(5) masked dump here is therefore redundant and has been removed.
 
 			// set up signal context for kubelet shutdown
 			ctx := genericapiserver.SetupSignalContext()
