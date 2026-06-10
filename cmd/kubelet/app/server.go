@@ -129,6 +129,7 @@ import (
 	"k8s.io/utils/cpuset"
 	"k8s.io/utils/exec"
 	netutils "k8s.io/utils/net"
+	"sigs.k8s.io/yaml"
 )
 
 func init() {
@@ -555,17 +556,55 @@ func Run(ctx context.Context, s *options.KubeletServer, kubeDeps *kubelet.Depend
 	return nil
 }
 
-func setConfigz(cz *configz.Config, kc *kubeletconfiginternal.KubeletConfiguration) error {
+// convertToVersionedKubeletConfig converts the internal KubeletConfiguration to the
+// external kubelet.config.k8s.io/v1beta1 representation and stamps the GroupVersionKind.
+// This is the same conversion that /configz performs, so callers that want to surface the
+// effective configuration in the exact form served by /configz can share this single path.
+func convertToVersionedKubeletConfig(kc *kubeletconfiginternal.KubeletConfiguration) (*kubeletconfigv1beta1.KubeletConfiguration, error) {
 	scheme, _, err := kubeletscheme.NewSchemeAndCodecs()
 	if err != nil {
-		return err
+		return nil, err
 	}
 	versioned := &kubeletconfigv1beta1.KubeletConfiguration{}
 	if err := scheme.Convert(kc, versioned, nil); err != nil {
-		return err
+		return nil, err
 	}
 	versioned.GetObjectKind().SetGroupVersionKind(kubeletconfigv1beta1.SchemeGroupVersion.WithKind("KubeletConfiguration"))
+	return versioned, nil
+}
+
+func setConfigz(cz *configz.Config, kc *kubeletconfiginternal.KubeletConfiguration) error {
+	versioned, err := convertToVersionedKubeletConfig(kc)
+	if err != nil {
+		return err
+	}
 	return cz.Set(versioned)
+}
+
+// marshalKubeletConfigForLog renders the effective KubeletConfiguration as a human-readable
+// YAML string for startup logging. The output mirrors what /configz serves: the internal
+// config is converted to the external kubelet.config.k8s.io/v1beta1 type (via
+// convertToVersionedKubeletConfig) so the dumped values reflect all overrides — defaults,
+// the --config file, drop-in --config-dir files, and command-line flag precedence. This is
+// what fixes the misleading startup output described in kubernetes/kubernetes #122736, where
+// raw flag values printed before config merge did not match the config the kubelet runs with.
+// Sensitive fields (StaticPodURLHeader values) are masked the same way as the existing
+// masked KubeletConfiguration dump.
+func marshalKubeletConfigForLog(kc *kubeletconfiginternal.KubeletConfiguration) (string, error) {
+	// Make the config safe for logging without mutating the caller's copy.
+	safe := kc.DeepCopy()
+	for k := range safe.StaticPodURLHeader {
+		safe.StaticPodURLHeader[k] = []string{"<masked>"}
+	}
+	versioned, err := convertToVersionedKubeletConfig(safe)
+	if err != nil {
+		return "", err
+	}
+	data, err := yaml.Marshal(versioned)
+	if err != nil {
+		return "", err
+	}
+	return string(data), nil
 }
 
 func initConfigz(ctx context.Context, kc *kubeletconfiginternal.KubeletConfiguration) error {
