@@ -187,22 +187,23 @@ featureGates:
 			gomega.Expect(initialConfig).To(gomega.BeComparableTo(mergedConfig), "Merged kubelet config does not match the expected configuration.")
 		})
 		ginkgo.It("should dump the effective KubeletConfiguration to the kubelet log at startup", func(ctx context.Context) {
-			ginkgo.By("Stopping the kubelet")
-			restartKubelet := mustStopKubelet(ctx, f)
-
 			configDir := framework.TestContext.KubeletConfigDropinDir
 
 			// Set a distinctive, non-default value via a drop-in config. The startup log
 			// dumps the *effective* (post-merge) KubeletConfiguration, so this value must
-			// appear in the log. This directly demonstrates the kubernetes/kubernetes
-			// #122736 fix: the log reflects what the kubelet actually runs with rather than
-			// stale pre-merge command-line flag values.
+			// appear in the log.
 			contents := []byte(`apiVersion: kubelet.config.k8s.io/v1beta1
 kind: KubeletConfiguration
-port: 10255`)
-			framework.ExpectNoError(os.WriteFile(filepath.Join(configDir, "10-kubelet.conf"), contents, 0755))
+eventBurst: 101`)
+
+			dropinConfigPath := filepath.Join(configDir, "10-kubelet.conf")
+			framework.ExpectNoError(os.WriteFile(dropinConfigPath, contents, 0755))
+			ginkgo.DeferCleanup(func(ctx context.Context) {
+				os.Remove(dropinConfigPath)
+			})
 
 			ginkgo.By("Restarting the kubelet")
+			restartKubelet := mustStopKubelet(ctx, f)
 			restartKubelet(ctx)
 
 			ginkgo.By("Verifying the effective KubeletConfiguration is dumped to the kubelet log")
@@ -220,7 +221,7 @@ port: 10255`)
 				// Marker that the dumped value is the serialized KubeletConfiguration.
 				gomega.ContainSubstring("kind: KubeletConfiguration"),
 				// The effective, post-merge value set via the drop-in config above.
-				gomega.ContainSubstring("port: 10255"),
+				gomega.ContainSubstring("eventBurst: 101"),
 			), "kubelet log should contain the effective KubeletConfiguration with merged values")
 		})
 	})
