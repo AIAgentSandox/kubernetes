@@ -553,3 +553,77 @@ readOnlyPort: 9999
 		})
 	}
 }
+
+func TestMarshalKubeletConfigForLog(t *testing.T) {
+	kc := &kubeletconfiginternal.KubeletConfiguration{
+		TypeMeta: metav1.TypeMeta{
+			Kind:       "KubeletConfiguration",
+			APIVersion: "kubelet.config.k8s.io/v1beta1",
+		},
+		// Non-default values that must round-trip into the marshaled output.
+		FailSwapOn:   false,
+		EvictionHard: map[string]string{"memory.available": "200Mi"},
+		// Sensitive field that must be masked.
+		StaticPodURLHeader: map[string][]string{
+			"Authorization": {"Bearer super-secret-token"},
+		},
+	}
+
+	out, err := marshalKubeletConfigForLog(kc)
+	require.NoError(t, err)
+
+	// (2) The output carries the external GroupVersionKind, mirroring /configz.
+	require.Contains(t, out, "apiVersion: kubelet.config.k8s.io/v1beta1")
+	require.Contains(t, out, "kind: KubeletConfiguration")
+
+	// (1) Non-default effective values are present.
+	require.Contains(t, out, "failSwapOn: false")
+	require.Contains(t, out, "memory.available: 200Mi")
+
+	// (3) Sensitive StaticPodURLHeader values are masked, never leaked.
+	require.Contains(t, out, "<masked>")
+	require.NotContains(t, out, "super-secret-token")
+
+	// The helper must not mutate the caller's config when masking.
+	require.Equal(t, []string{"Bearer super-secret-token"}, kc.StaticPodURLHeader["Authorization"])
+}
+
+// TestMarshalKubeletConfigForLogReflectsMergedConfig drives the same merge path used at
+// startup (a base --config value overridden by a drop-in --config-dir file) and asserts
+// that marshalKubeletConfigForLog reflects the post-merge effective value rather than the
+// pre-merge base value. This directly demonstrates the fix for kubernetes/kubernetes
+// #122736, where the raw flag/config values logged before the merge were misleading.
+func TestMarshalKubeletConfigForLogReflectsMergedConfig(t *testing.T) {
+	tempDir := t.TempDir()
+
+	// Base config (as if provided via --config) sets port 9090.
+	kubeletConfig := &kubeletconfiginternal.KubeletConfiguration{
+		TypeMeta: metav1.TypeMeta{
+			Kind:       "KubeletConfiguration",
+			APIVersion: "kubelet.config.k8s.io/v1beta1",
+		},
+		Port:         int32(9090),
+		ReadOnlyPort: int32(10257),
+	}
+
+	// Drop-in (as if provided via --config-dir) overrides the port to 8080.
+	kubeletConfDir := filepath.Join(tempDir, "kubelet.conf.d")
+	require.NoError(t, os.Mkdir(kubeletConfDir, 0755))
+	dropin := `
+apiVersion: kubelet.config.k8s.io/v1beta1
+kind: KubeletConfiguration
+port: 8080
+`
+	require.NoError(t, os.WriteFile(filepath.Join(kubeletConfDir, "10-kubelet.conf"), []byte(dropin), 0644))
+
+	_, err := mergeKubeletConfigurations(kubeletConfig, kubeletConfDir)
+	require.NoError(t, err, "failed to merge kubelet drop-in configs")
+	require.Equal(t, int32(8080), kubeletConfig.Port, "sanity: merge should override the base port")
+
+	out, err := marshalKubeletConfigForLog(kubeletConfig)
+	require.NoError(t, err)
+
+	// The dump must show the post-merge effective value, not the pre-merge base value.
+	require.Contains(t, out, "port: 8080")
+	require.NotContains(t, out, "port: 9090")
+}
