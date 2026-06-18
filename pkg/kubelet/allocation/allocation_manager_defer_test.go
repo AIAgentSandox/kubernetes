@@ -44,9 +44,17 @@ type fakeAdmitHandler struct {
 	deferResult bool
 	reason      string
 	message     string
+	// seenOtherPods records the OtherPods UID set observed on each Admit call,
+	// in call order, so tests can verify the peer set passed to admission.
+	seenOtherPods [][]types.UID
 }
 
-func (h *fakeAdmitHandler) Admit(_ context.Context, _ *lifecycle.PodAdmitAttributes) lifecycle.PodAdmitResult {
+func (h *fakeAdmitHandler) Admit(_ context.Context, attrs *lifecycle.PodAdmitAttributes) lifecycle.PodAdmitResult {
+	otherUIDs := make([]types.UID, 0, len(attrs.OtherPods))
+	for _, p := range attrs.OtherPods {
+		otherUIDs = append(otherUIDs, p.UID)
+	}
+	h.seenOtherPods = append(h.seenOtherPods, otherUIDs)
 	if h.admit {
 		return lifecycle.PodAdmitResult{Admit: true}
 	}
@@ -273,6 +281,102 @@ func TestRemoveOrphanedPodsCleansUpDeferred(t *testing.T) {
 	_, tracked := f.manager.podsWithDeferredAdmission[pod.UID]
 	f.manager.allocationMutex.Unlock()
 	require.False(t, tracked, "orphaned deferred pod should be cleared")
+}
+
+// With multiple pods deferred, each retry must see the correct OtherPods set.
+// Regression test for the shared allocatedPods slice being mutated in place
+// across iterations of the retry loop (which would leave later pods with an
+// empty/corrupted peer set).
+func TestRetryDeferredAdmissionMultiplePodsOtherPods(t *testing.T) {
+	tCtx := ktesting.Init(t)
+	p1 := makeDeferTestPod("multi-1")
+	p2 := makeDeferTestPod("multi-2")
+	f := newDeferTestFixture(t, p1, p2)
+	f.handler.admit = false
+	f.handler.deferResult = true
+
+	_, d1, _, _ := f.manager.AddPod(tCtx, []*v1.Pod{p1, p2}, p1)
+	require.True(t, d1)
+	_, d2, _, _ := f.manager.AddPod(tCtx, []*v1.Pod{p1, p2}, p2)
+	require.True(t, d2)
+
+	f.handler.seenOtherPods = nil
+	f.manager.RetryDeferredAdmissions(tCtx)
+
+	require.Len(t, f.handler.seenOtherPods, 2, "both deferred pods should be re-evaluated")
+	for _, seen := range f.handler.seenOtherPods {
+		require.Len(t, seen, 1, "each pod should see exactly the one other active pod as OtherPods")
+	}
+}
+
+// A previously-deferred pod that later fails for a non-deferrable reason while
+// still inside the timeout window is rejected with that reason, not relabeled
+// as a deferral timeout.
+func TestRetryDeferredAdmissionNonDeferrableRejection(t *testing.T) {
+	tCtx := ktesting.Init(t)
+	pod := makeDeferTestPod("defer-nondef")
+	f := newDeferTestFixture(t, pod)
+	f.handler.admit = false
+	f.handler.deferResult = true
+
+	_, deferred, _, _ := f.manager.AddPod(tCtx, []*v1.Pod{pod}, pod)
+	require.True(t, deferred)
+
+	// Within the timeout, admission now fails for a different, non-deferrable reason.
+	f.handler.deferResult = false
+	f.handler.reason = "OutOfMemory"
+	f.handler.message = "node out of memory"
+	f.clock.Step(10 * time.Second)
+	f.manager.RetryDeferredAdmissions(tCtx)
+
+	require.Len(t, f.rejected, 1, "non-deferrable failure should reject the pod")
+	require.Equal(t, "OutOfMemory", f.rejected[0].reason, "reason must not be relabeled as a timeout")
+	require.Equal(t, "node out of memory", f.rejected[0].message, "message must not be prefixed with timeout text")
+
+	f.manager.allocationMutex.Lock()
+	_, tracked := f.manager.podsWithDeferredAdmission[pod.UID]
+	f.manager.allocationMutex.Unlock()
+	require.False(t, tracked, "rejected pod should be removed from the deferred map")
+}
+
+// A pod deleted between deferral and retry is silently dropped, not synced or rejected.
+func TestRetryDeferredAdmissionPodDeleted(t *testing.T) {
+	tCtx := ktesting.Init(t)
+	f := newDeferTestFixture(t)
+
+	f.manager.allocationMutex.Lock()
+	f.manager.podsWithDeferredAdmission["ghost-uid"] = f.clock.Now()
+	f.manager.allocationMutex.Unlock()
+
+	f.manager.RetryDeferredAdmissions(tCtx)
+
+	f.manager.allocationMutex.Lock()
+	_, tracked := f.manager.podsWithDeferredAdmission["ghost-uid"]
+	f.manager.allocationMutex.Unlock()
+	require.False(t, tracked, "deleted pod should be dropped from the deferred map")
+	require.Empty(t, f.synced, "deleted pod must not be synced")
+	require.Empty(t, f.rejected, "deleted pod must not be rejected")
+}
+
+// At exactly the timeout boundary the pod is still deferred (the check is <=).
+func TestRetryDeferredAdmissionAtTimeoutBoundary(t *testing.T) {
+	tCtx := ktesting.Init(t)
+	pod := makeDeferTestPod("defer-boundary")
+	f := newDeferTestFixture(t, pod)
+	f.handler.admit = false
+	f.handler.deferResult = true
+
+	_, deferred, _, _ := f.manager.AddPod(tCtx, []*v1.Pod{pod}, pod)
+	require.True(t, deferred)
+
+	f.clock.Step(deferredAdmissionTimeout) // exactly at the boundary
+	f.manager.RetryDeferredAdmissions(tCtx)
+
+	f.manager.allocationMutex.Lock()
+	_, tracked := f.manager.podsWithDeferredAdmission[pod.UID]
+	f.manager.allocationMutex.Unlock()
+	require.True(t, tracked, "pod at exactly the timeout boundary should still be deferred")
+	require.Empty(t, f.rejected, "pod at the boundary must not be rejected")
 }
 
 // Non-device-plugin rejections still reject immediately (no deferral).

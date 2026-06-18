@@ -717,7 +717,13 @@ func NewMainKubelet(ctx context.Context,
 		klet.syncPodNow,
 		klet.GetActivePods,
 		klet.podManager.GetPodByUID,
-		klet.rejectPod,
+		func(ctx context.Context, pod *v1.Pod, reason, message string) {
+			// Pods rejected after their deferred admission times out are
+			// admission rejections too; record the metric the same way the
+			// synchronous rejection path in HandlePodAdditions does.
+			recordAdmissionRejection(reason)
+			klet.rejectPod(ctx, pod, reason, message)
+		},
 		klet.sourcesReady,
 		kubeDeps.Recorder,
 		logger,

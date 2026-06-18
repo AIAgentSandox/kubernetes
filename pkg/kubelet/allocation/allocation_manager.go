@@ -51,11 +51,13 @@ const (
 	initialRetryDelay = 30 * time.Second
 	retryDelay        = 3 * time.Minute
 
-	// deferredAdmissionTimeout is the maximum duration a pod can remain in the
-	// deferred admission queue before being permanently rejected. If a pod has
-	// been continuously deferred for longer than this timeout (measured from
-	// when it first entered the deferred state), it is rejected with PodFailed
-	// status, matching the existing immediate-rejection behavior.
+	// deferredAdmissionTimeout bounds how long a pod may remain in the deferred
+	// admission queue before being permanently rejected. Once a pod has been
+	// continuously deferred for longer than this timeout (measured from when it
+	// first entered the deferred state), the next retry rejects it with PodFailed
+	// status, matching the existing immediate-rejection behavior. Because retries
+	// run on the initialRetryDelay cadence, the actual rejection happens on the
+	// first retry after the timeout elapses, not exactly at the timeout.
 	deferredAdmissionTimeout = 1 * time.Minute
 
 	TriggerReasonPodResized    = "pod_resized"
@@ -559,6 +561,10 @@ func (m *manager) AddPod(ctx context.Context, activePods []*v1.Pod, pod *v1.Pod)
 		// instead of rejecting it.
 		if _, alreadyTracked := m.podsWithDeferredAdmission[pod.UID]; !alreadyTracked {
 			m.podsWithDeferredAdmission[pod.UID] = m.clock.Now()
+			// Retry deferred admission on the shorter cadence so the deferral
+			// timeout is honored even if the periodic ticker was just reset to
+			// the longer resize retry interval before this pod was deferred.
+			m.ticker.Reset(initialRetryDelay)
 		}
 		logger.V(4).Info("Pod admission deferred; will retry", "pod", klog.KObj(pod), "reason", reason, "message", message)
 		return false, true, reason, message
@@ -642,7 +648,10 @@ func (m *manager) retryDeferredAdmissions(ctx context.Context) {
 			evalPod, _ = m.UpdatePodFromAllocation(pod)
 		}
 
-		ok, deferAdmission, reason, message := m.canAdmitPod(ctx, allocatedPods, evalPod, lifecycle.AddOperation)
+		// canAdmitPod mutates the passed slice in place (it filters out the pod
+		// being evaluated), so pass a fresh copy each iteration to avoid
+		// corrupting the shared allocatedPods backing array for later pods.
+		ok, deferAdmission, reason, message := m.canAdmitPod(ctx, slices.Clone(allocatedPods), evalPod, lifecycle.AddOperation)
 		switch {
 		case ok:
 			// Admission now succeeds; checkpoint and sync the pod.
@@ -661,12 +670,16 @@ func (m *manager) retryDeferredAdmissions(ctx context.Context) {
 			// Either the deferral timed out, or admission now fails for a
 			// non-deferrable reason. Reject the pod.
 			delete(m.podsWithDeferredAdmission, uid)
-			if reason == "" {
-				reason = "DeferredAdmissionTimeout"
-			}
 			if !deferAdmission {
 				logger.V(4).Info("Deferred pod admission now failing for a non-deferrable reason; rejecting", "pod", klog.KObj(pod), "reason", reason)
 			} else {
+				// The deferral timed out while still waiting on the device
+				// plugin. Use a synthetic reason only when the handler did not
+				// provide one, so a genuine non-deferrable reason is never
+				// mislabeled as a timeout.
+				if reason == "" {
+					reason = "DeferredAdmissionTimeout"
+				}
 				logger.V(2).Info("Deferred pod admission timed out; rejecting", "pod", klog.KObj(pod), "timeout", deferredAdmissionTimeout)
 				message = "deferred admission timed out: " + message
 			}

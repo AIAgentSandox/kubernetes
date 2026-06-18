@@ -424,6 +424,17 @@ var _ = SIGDescribe("Device Plugin Failures:", framework.WithNodeConformance(), 
 		client := e2epod.NewPodClient(f)
 		pod = client.Create(ctx, pod)
 
+		// The pod must first be deferred (kept Pending), not rejected immediately:
+		// this distinguishes the deferral behavior from the pre-feature behavior
+		// of failing the pod right away. The window stays under the 1-minute
+		// deferral timeout.
+		ginkgo.By("pod stays Pending (deferred) before the admission timeout elapses")
+		gomega.Consistently(func() v1.PodPhase {
+			p, err := f.ClientSet.CoreV1().Pods(f.Namespace.Name).Get(ctx, pod.Name, metav1.GetOptions{})
+			gomega.Expect(err).To(gomega.Succeed())
+			return p.Status.Phase
+		}, 30*time.Second, f.Timeouts.Poll).Should(gomega.Equal(v1.PodPending))
+
 		ginkgo.By("pod is permanently rejected with Failed after the deferred admission timeout")
 		gomega.Eventually(func() v1.PodPhase {
 			p, err := f.ClientSet.CoreV1().Pods(f.Namespace.Name).Get(ctx, pod.Name, metav1.GetOptions{})
