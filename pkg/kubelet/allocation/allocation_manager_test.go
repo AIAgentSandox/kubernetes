@@ -1758,7 +1758,7 @@ func TestAllocationManagerAddPodWithPLR(t *testing.T) {
 				allocationManager.AddPodAdmitHandlers(lifecycle.PodAdmitHandlers{handler})
 			}
 
-			ok, reason, message := allocationManager.AddPod(tCtx, tc.currentActivePods, tc.podToAdd)
+			ok, _, reason, message := allocationManager.AddPod(tCtx, tc.currentActivePods, tc.podToAdd)
 			require.Equal(t, tc.expectAdmit, ok)
 			require.Equal(t, tc.admissionFailureReason, reason)
 			require.Equal(t, tc.admissionFailureMessage, message)
@@ -2016,7 +2016,7 @@ func TestAllocationManagerAddPod(t *testing.T) {
 				allocationManager.AddPodAdmitHandlers(lifecycle.PodAdmitHandlers{handler})
 			}
 
-			ok, reason, message := allocationManager.AddPod(tCtx, tc.currentActivePods, tc.podToAdd)
+			ok, _, reason, message := allocationManager.AddPod(tCtx, tc.currentActivePods, tc.podToAdd)
 			require.Equal(t, tc.expectAdmit, ok)
 			require.Equal(t, tc.admissionFailureReason, reason)
 			require.Equal(t, tc.admissionFailureMessage, message)
@@ -2456,6 +2456,9 @@ func makeAllocationManager(t *testing.T, runtime *containertest.FakeRuntime, all
 				}
 			}
 			return nil, false
+		},
+		func(_ context.Context, _ *v1.Pod, _, _ string) {
+			/* For testing, the rejection callback is a no-op by default. */
 		},
 		config.NewSourcesReady(func(_ sets.Set[string]) bool { return true }),
 		record.NewFakeRecorder(20),
