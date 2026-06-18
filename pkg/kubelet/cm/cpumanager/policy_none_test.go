@@ -35,7 +35,7 @@ func TestNonePolicyName(t *testing.T) {
 }
 
 func TestNonePolicyAllocate(t *testing.T) {
-	_, ctx := ktesting.NewTestContext(t)
+	logger, _ := ktesting.NewTestContext(t)
 	policy := &nonePolicy{}
 
 	st := &mockState{
@@ -46,7 +46,7 @@ func TestNonePolicyAllocate(t *testing.T) {
 	testPod := makePod("fakePod", "fakeContainer", "1000m", "1000m")
 
 	container := &testPod.Spec.Containers[0]
-	err := policy.Allocate(ctx, st, testPod, container)
+	err := policy.Allocate(logger, st, testPod, container)
 	if err != nil {
 		t.Errorf("NonePolicy Allocate() error. expected no error but got: %v", err)
 	}

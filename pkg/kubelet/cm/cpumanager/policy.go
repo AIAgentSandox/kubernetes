@@ -17,8 +17,6 @@ limitations under the License.
 package cpumanager
 
 import (
-	"context"
-
 	"github.com/go-logr/logr"
 
 	v1 "k8s.io/api/core/v1"
@@ -32,19 +30,19 @@ type Policy interface {
 	Name() string
 	Start(logger logr.Logger, s state.State) error
 	// Allocate call is idempotent
-	Allocate(ctx context.Context, s state.State, pod *v1.Pod, container *v1.Container) error
+	Allocate(logger logr.Logger, s state.State, pod *v1.Pod, container *v1.Container) error
 	// RemoveContainer call is idempotent
 	RemoveContainer(logger logr.Logger, s state.State, podUID string, containerName string) error
 	// GetTopologyHints implements the topologymanager.HintProvider Interface
 	// and is consulted to achieve NUMA aware resource alignment among this
 	// and other resource controllers.
-	GetTopologyHints(ctx context.Context, s state.State, pod *v1.Pod, container *v1.Container) map[string][]topologymanager.TopologyHint
+	GetTopologyHints(logger logr.Logger, s state.State, pod *v1.Pod, container *v1.Container) map[string][]topologymanager.TopologyHint
 	// GetPodTopologyHints implements the topologymanager.HintProvider Interface
 	// and is consulted to achieve NUMA aware resource alignment per Pod
 	// among this and other resource controllers.
-	GetPodTopologyHints(ctx context.Context, s state.State, pod *v1.Pod) map[string][]topologymanager.TopologyHint
+	GetPodTopologyHints(logger logr.Logger, s state.State, pod *v1.Pod) map[string][]topologymanager.TopologyHint
 	// AllocatePod is called to trigger the allocation of CPUs to a pod.
-	AllocatePod(ctx context.Context, s state.State, pod *v1.Pod) error
+	AllocatePod(logger logr.Logger, s state.State, pod *v1.Pod) error
 	// GetAllocatableCPUs returns the total set of CPUs available for allocation.
 	GetAllocatableCPUs(m state.State) cpuset.CPUSet
 }

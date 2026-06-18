@@ -480,7 +480,7 @@ func TestGetPodTopologyHintsWithPolicyOptions(t *testing.T) {
 	for _, testCase := range testCases {
 		t.Run(testCase.description, func(t *testing.T) {
 			featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.CPUManagerPolicyAlphaOptions, true)
-			_, ctx := ktesting.NewTestContext(t)
+			tCtx := ktesting.Init(t)
 
 			var activePods []*v1.Pod
 			for p := range testCase.assignments {
@@ -509,7 +509,7 @@ func TestGetPodTopologyHintsWithPolicyOptions(t *testing.T) {
 				sourcesReady:      &sourcesReadyStub{},
 			}
 
-			podHints := m.GetPodTopologyHints(ctx, &testCase.pod)[string(v1.ResourceCPU)]
+			podHints := m.GetPodTopologyHints(tCtx, &testCase.pod)[string(v1.ResourceCPU)]
 			sort.SliceStable(podHints, func(i, j int) bool {
 				return podHints[i].LessThan(podHints[j])
 			})

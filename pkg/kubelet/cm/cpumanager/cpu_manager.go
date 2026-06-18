@@ -276,7 +276,7 @@ func (m *manager) Allocate(ctx context.Context, p *v1.Pod, c *v1.Container) erro
 	defer m.Unlock()
 
 	// Call down into the policy to assign this container CPUs if required.
-	err := m.policy.Allocate(ctx, m.state, p, c)
+	err := m.policy.Allocate(logger, m.state, p, c)
 	if err != nil {
 		logger.Error(err, "policy error")
 		return err
@@ -295,7 +295,7 @@ func (m *manager) AllocatePod(ctx context.Context, pod *v1.Pod) error {
 	defer m.Unlock()
 
 	// Call down into the policy to assign this container CPUs if required.
-	if err := m.policy.AllocatePod(ctx, m.state, pod); err != nil {
+	if err := m.policy.AllocatePod(logger, m.state, pod); err != nil {
 		logger.Error(err, "AllocatePod error", "pod", klog.KObj(pod))
 		return err
 	}
@@ -359,7 +359,7 @@ func (m *manager) GetTopologyHints(ctx context.Context, pod *v1.Pod, container *
 	// Garbage collect any stranded resources before providing TopologyHints
 	m.removeStaleState(logger)
 	// Delegate to active policy
-	return m.policy.GetTopologyHints(ctx, m.state, pod, container)
+	return m.policy.GetTopologyHints(logger, m.state, pod, container)
 }
 
 func (m *manager) GetPodTopologyHints(ctx context.Context, pod *v1.Pod) map[string][]topologymanager.TopologyHint {
@@ -367,7 +367,7 @@ func (m *manager) GetPodTopologyHints(ctx context.Context, pod *v1.Pod) map[stri
 	// Garbage collect any stranded resources before providing TopologyHints
 	m.removeStaleState(logger)
 	// Delegate to active policy
-	return m.policy.GetPodTopologyHints(ctx, m.state, pod)
+	return m.policy.GetPodTopologyHints(logger, m.state, pod)
 }
 
 func (m *manager) GetAllocatableCPUs() cpuset.CPUSet {
