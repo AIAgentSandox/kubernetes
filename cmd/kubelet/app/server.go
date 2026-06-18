@@ -250,28 +250,19 @@ is checked every 20 seconds (also configurable with a flag).`,
 			if err := logsapi.ValidateAndApplyAsField(&kubeletConfig.Logging, utilfeature.DefaultFeatureGate, field.NewPath("logging")); err != nil {
 				return fmt.Errorf("initialize logging: %v", err)
 			}
-			// Dump the full effective KubeletConfiguration at startup. Printing the raw
-			// command-line flags (cliflag.PrintFlags, below) is misleading: flags that mirror
-			// KubeletConfiguration fields are parsed before --config / --config-dir are merged
-			// and flag precedence is re-enforced, so they can show stale values that do not
-			// match what the kubelet actually runs with. The effective configuration logged
-			// here reflects all overrides (defaults, the --config file, drop-in --config-dir
-			// files, and command-line flag precedence) and is serialized exactly like /configz.
-			// See kubernetes/kubernetes #122736.
+			// Dump the full effective KubeletConfiguration.
 			if cfgStr, err := marshalKubeletConfigForLog(kubeletConfig); err != nil {
 				// Logging must never block startup; log the error and continue.
 				logger.Error(err, "Failed to marshal effective KubeletConfiguration for logging")
 			} else {
 				logger.Info("Effective KubeletConfiguration", "config", cfgStr)
 			}
-			// Print the raw flags at a more verbose level (PrintFlags logs at klog.V(1)).
 			// Node-specific flags that are not part of KubeletConfiguration (e.g.
 			// --hostname-override, --kubeconfig, --node-ip, --cert-dir) come straight from the
 			// command line and remain accurate, so they stay available for debugging.
 			cliflag.PrintFlags(cleanFlagSet)
 
 			// We always validate the local configuration (command line + config file).
-			// This is the default "last-known-good" config for dynamic config, and must always remain valid.
 			if err := kubeletconfigvalidation.ValidateKubeletConfiguration(kubeletConfig, utilfeature.DefaultFeatureGate); err != nil {
 				return fmt.Errorf("failed to validate kubelet configuration, error: %w, path: %s", err, kubeletConfig)
 			}
@@ -591,14 +582,8 @@ func setConfigz(cz *configz.Config, kc *kubeletconfiginternal.KubeletConfigurati
 }
 
 // marshalKubeletConfigForLog renders the effective KubeletConfiguration as a human-readable
-// YAML string for startup logging. The output mirrors what /configz serves: the internal
-// config is converted to the external kubelet.config.k8s.io/v1beta1 type (via
-// convertToVersionedKubeletConfig) so the dumped values reflect all overrides — defaults,
-// the --config file, drop-in --config-dir files, and command-line flag precedence. This is
-// what fixes the misleading startup output described in kubernetes/kubernetes #122736, where
-// raw flag values printed before config merge did not match the config the kubelet runs with.
-// Sensitive fields (StaticPodURLHeader values) are masked the same way as the existing
-// masked KubeletConfiguration dump.
+// YAML string for startup logging. The output mirrors what /configz serves except the
+// sensitive field StaticPodURLHeader is masked while /configz outputs it.
 func marshalKubeletConfigForLog(kc *kubeletconfiginternal.KubeletConfiguration) (string, error) {
 	// Make the config safe for logging without mutating the caller's copy.
 	safe := kc.DeepCopy()
