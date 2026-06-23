@@ -1306,6 +1306,7 @@ func (kl *Kubelet) HandlePodCleanups(ctx context.Context) error {
 	logger.V(3).Info("Clean up orphaned pod statuses")
 	kl.removeOrphanedPodStatuses(logger, allPods, mirrorPods)
 	kl.allocationManager.RemoveOrphanedPods(allPodsByUID)
+	kl.removeOrphanedDeferredAdmissions(allPodsByUID)
 
 	// Remove orphaned pod user namespace allocations (if any).
 	logger.V(3).Info("Clean up orphaned pod user namespace allocations")
@@ -1374,7 +1375,7 @@ func (kl *Kubelet) HandlePodCleanups(ctx context.Context) error {
 		// dispatching it. Such a pod is not admitted, so it must not be started
 		// here. The allocation manager retries its admission and will dispatch it
 		// once it is admitted, or reject it if the deferral times out.
-		if kl.allocationManager.IsPodAdmissionDeferred(desiredPod.UID) {
+		if kl.IsPodAdmissionDeferred(desiredPod.UID) {
 			continue
 		}
 
