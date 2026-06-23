@@ -198,9 +198,10 @@ eventBurst: 101`)
 
 			dropinConfigPath := filepath.Join(configDir, "10-kubelet.conf")
 			framework.ExpectNoError(os.WriteFile(dropinConfigPath, contents, 0755))
-			ginkgo.DeferCleanup(func(ctx context.Context) {
-				framework.ExpectNoError(os.Remove(dropinConfigPath))
-			})
+			// Cleanup of the drop-in file is handled by the Context's AfterEach,
+			// which removes all *.conf files in the drop-in dir. A DeferCleanup
+			// here would collide with that AfterEach and fail trying to remove an
+			// already-deleted file.
 
 			ginkgo.By("Restarting the kubelet")
 			restartKubelet := mustStopKubelet(ctx, f)
