@@ -141,6 +141,33 @@ func TestInitCredentialProviderConfigz(t *testing.T) {
 	require.Equal(t, "", entry.Providers[0].Env[1].Value)
 }
 
+// TestInitCredentialProviderConfigzLoadFailure asserts that a load/parse failure
+// is tolerated: initCredentialProviderConfigz returns nil (kubelet startup is not
+// blocked) and no "credentialproviderconfig" entry is registered.
+func TestInitCredentialProviderConfigzLoadFailure(t *testing.T) {
+	const name = "credentialproviderconfig"
+	configz.Delete(name)
+	t.Cleanup(func() { configz.Delete(name) })
+
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "config.yaml")
+	require.NoError(t, os.WriteFile(configPath, []byte("this: is: not: valid: yaml"), 0600))
+
+	require.NoError(t, initCredentialProviderConfigz(context.Background(), configPath))
+
+	mux := http.NewServeMux()
+	configz.InstallHandler(mux)
+	req := httptest.NewRequest(http.MethodGet, configz.DefaultConfigzPath, nil)
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	var payload map[string]json.RawMessage
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &payload))
+	_, ok := payload[name]
+	require.False(t, ok, "expected /configz JSON to omit key %q when config fails to load", name)
+}
+
 // TestInitCredentialProviderConfigzEmptyPath asserts no entry is registered when
 // the credential provider config path is empty.
 func TestInitCredentialProviderConfigzEmptyPath(t *testing.T) {

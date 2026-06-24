@@ -38,10 +38,11 @@ func populatedKubeletFlags() *options.KubeletFlags {
 	f.NodeIP = "10.0.0.1"
 	f.CertDirectory = "/var/lib/kubelet/pki"
 	f.CloudProvider = "external"
-	f.CloudConfigFile = "/etc/kubernetes/cloud.conf"
 	f.RootDirectory = "/var/lib/kubelet"
 	f.KubeletConfigFile = "/var/lib/kubelet/config.yaml"
 	f.KubeletDropinConfigDirectory = "/etc/kubernetes/kubelet.conf.d"
+	f.WindowsService = true
+	f.WindowsPriorityClass = "ABOVE_NORMAL_PRIORITY_CLASS"
 	f.ExperimentalMounterPath = "/usr/bin/mounter"
 	f.ExperimentalNodeAllocatableIgnoreEvictionThreshold = true
 	f.NodeLabels = map[string]string{"example.com/role": "worker"}
@@ -62,15 +63,37 @@ func TestNewKubeletFlagsConfigz(t *testing.T) {
 	cz := newKubeletFlagsConfigz(f)
 
 	require.Equal(t, kubeletFlagsConfigzGVK, cz.GetObjectKind().GroupVersionKind())
-	require.Equal(t, "KubeletFlags", cz.Kind)
-	require.Equal(t, "kubelet.config.k8s.io/v1alpha1", cz.APIVersion)
 
-	require.Equal(t, f.RootDirectory, cz.RootDirectory)
-	require.Equal(t, f.ImageCredentialProviderConfigPath, cz.ImageCredentialProviderConfigPath)
-	require.Equal(t, f.ImageCredentialProviderBinDir, cz.ImageCredentialProviderBinDir)
-	require.Equal(t, f.NodeLabels, cz.NodeLabels)
-	require.True(t, cz.ExitOnLockContention)
-	require.Equal(t, int32(5), cz.MaxContainerCount)
+	// Assert the full mapping field-by-field so a copy/paste error that wires a
+	// field to the wrong source is caught (the struct has many similarly typed
+	// fields). The TypeMeta is asserted separately above via the GVK.
+	want := &KubeletFlagsConfigz{
+		TypeMeta:                     cz.TypeMeta,
+		KubeConfig:                   f.KubeConfig,
+		BootstrapKubeconfig:          f.BootstrapKubeconfig,
+		HostnameOverride:             f.HostnameOverride,
+		NodeIP:                       f.NodeIP,
+		CertDirectory:                f.CertDirectory,
+		CloudProvider:                f.CloudProvider,
+		RootDirectory:                f.RootDirectory,
+		KubeletConfigFile:            f.KubeletConfigFile,
+		KubeletDropinConfigDirectory: f.KubeletDropinConfigDirectory,
+		WindowsService:               f.WindowsService,
+		WindowsPriorityClass:         f.WindowsPriorityClass,
+		ExperimentalMounterPath:      f.ExperimentalMounterPath,
+		ExperimentalNodeAllocatableIgnoreEvictionThreshold: f.ExperimentalNodeAllocatableIgnoreEvictionThreshold,
+		NodeLabels:                        f.NodeLabels,
+		LockFilePath:                      f.LockFilePath,
+		ExitOnLockContention:              f.ExitOnLockContention,
+		SeccompDefault:                    f.SeccompDefault,
+		MinimumGCAge:                      f.MinimumGCAge,
+		MaxPerPodContainerCount:           f.MaxPerPodContainerCount,
+		MaxContainerCount:                 f.MaxContainerCount,
+		RuntimeCgroups:                    f.RuntimeCgroups,
+		ImageCredentialProviderConfigPath: f.ImageCredentialProviderConfigPath,
+		ImageCredentialProviderBinDir:     f.ImageCredentialProviderBinDir,
+	}
+	require.Equal(t, want, cz)
 }
 
 func TestKubeletFlagsConfigzDeepCopyObject(t *testing.T) {

@@ -65,9 +65,6 @@ type KubeletFlagsConfigz struct {
 	CertDirectory string `json:"certDirectory,omitempty"`
 	// CloudProvider is the cloud services provider (--cloud-provider).
 	CloudProvider string `json:"cloudProvider,omitempty"`
-	// CloudConfigFile is the path to the cloud provider config (--cloud-config).
-	// Path only.
-	CloudConfigFile string `json:"cloudConfigFile,omitempty"`
 	// RootDirectory is where the kubelet places its files (--root-dir). Path only.
 	RootDirectory string `json:"rootDirectory,omitempty"`
 	// KubeletConfigFile is the initial config file path (--config). Path only.
@@ -75,6 +72,12 @@ type KubeletFlagsConfigz struct {
 	// KubeletDropinConfigDirectory is the drop-in config directory (--config-dir).
 	// Path only.
 	KubeletDropinConfigDirectory string `json:"kubeletDropinConfigDirectory,omitempty"`
+	// WindowsService indicates the kubelet runs as a Windows service
+	// (--windows-service). Its flag is only registered on Windows builds.
+	WindowsService bool `json:"windowsService,omitempty"`
+	// WindowsPriorityClass is the priority class for the kubelet process
+	// (--windows-priorityclass). Its flag is only registered on Windows builds.
+	WindowsPriorityClass string `json:"windowsPriorityClass,omitempty"`
 	// ExperimentalMounterPath is the path of the mounter binary
 	// (--experimental-mounter-path). Path only.
 	ExperimentalMounterPath string `json:"experimentalMounterPath,omitempty"`
@@ -153,10 +156,11 @@ func newKubeletFlagsConfigz(f *options.KubeletFlags) *KubeletFlagsConfigz {
 		NodeIP:                       f.NodeIP,
 		CertDirectory:                f.CertDirectory,
 		CloudProvider:                f.CloudProvider,
-		CloudConfigFile:              f.CloudConfigFile,
 		RootDirectory:                f.RootDirectory,
 		KubeletConfigFile:            f.KubeletConfigFile,
 		KubeletDropinConfigDirectory: f.KubeletDropinConfigDirectory,
+		WindowsService:               f.WindowsService,
+		WindowsPriorityClass:         f.WindowsPriorityClass,
 		ExperimentalMounterPath:      f.ExperimentalMounterPath,
 		ExperimentalNodeAllocatableIgnoreEvictionThreshold: f.ExperimentalNodeAllocatableIgnoreEvictionThreshold,
 		NodeLabels:                        f.NodeLabels,
@@ -209,6 +213,10 @@ func nonMergedFlagNames() sets.Set[string] {
 // nonMergedFlagNames() is checked against in the unit tests: when a new
 // non-merged flag is added to options.KubeletFlags, the guard test fails until
 // the flag is added both to KubeletFlagsConfigz and to this set.
+//
+// osNonMergedConfigzFlags contributes the platform-specific non-merged flags
+// (e.g. the Windows-only --windows-service / --windows-priorityclass) so the
+// covered set matches nonMergedFlagNames() on every GOOS.
 var kubeletFlagsConfigzCoveredFlags = sets.New[string](
 	"kubeconfig",
 	"bootstrap-kubeconfig",
@@ -231,4 +239,4 @@ var kubeletFlagsConfigzCoveredFlags = sets.New[string](
 	"runtime-cgroups",
 	"image-credential-provider-config",
 	"image-credential-provider-bin-dir",
-)
+).Insert(osNonMergedConfigzFlags...)
