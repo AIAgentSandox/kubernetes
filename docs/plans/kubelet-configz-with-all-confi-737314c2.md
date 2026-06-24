@@ -105,6 +105,7 @@ measure consistent with treating that field as admin-controlled secret material.
   - Build: `go build ./cmd/kubelet/... ./pkg/credentialprovider/...`
   - Unit tests: `go test ./cmd/kubelet/app/... ./pkg/credentialprovider/plugin/...`
   - e2e_node compile check: `go vet ./test/e2e_node/...`
+  - e2e_node tests run: `make test-e2e-node TEST_ARGS='--kubelet-flags=--fail-swap-on=false' FOCUS="<related config tests>"`
   - Lint/format: `gofmt -l` on changed files (and `hack/verify-gofmt.sh` if run
     locally); run `goimports` on changed files.
 
@@ -132,6 +133,7 @@ an external GVK, introduce a small exposable wrapper type.
       `ContainerRuntimeOptions` fields such as `ImageCredentialProviderConfigPath`
       and `ImageCredentialProviderBinDir`). Document why each field is included
       and that none carry secret contents (paths/IDs only).
+- [ ] Make the mechanism of detecting whether the flag merged to the config or not universal
 - [ ] Implement `runtime.Object` on the type (`GetObjectKind()` via the embedded
       `TypeMeta`, plus a `DeepCopyObject()` method). Stamp a descriptive external
       GVK (e.g. group `kubelet.config.k8s.io`, an appropriate version, kind
@@ -223,26 +225,3 @@ entries end-to-end on a real kubelet.
 - [ ] Validate: `go vet ./test/e2e_node/...` compiles; `gofmt`/`goimports` clean.
       (Note: the e2e_node suite requires a running node environment to execute;
       compilation/vet is the automatable gate here.)
-
-### Task 4: Documentation and finalized secrets analysis
-
-Capture the secrets analysis and the new `/configz` shape so operators
-understand what is exposed and why `env` values are redacted.
-
-**Files:**
-- Create: `docs/proposals/kubelet-configz-all-sources.md` (or append to existing
-  kubelet `/configz` documentation if one is found during implementation)
-
-- [ ] Document the new `/configz` response shape (top-level keys `kubeletconfig`,
-      `kubeletflags`, `credentialproviderconfig`) with an example payload.
-- [ ] Document the secrets analysis table from the "Secrets analysis" section
-      above: enumerate every additional kubelet configuration source, state
-      whether it can hold secret content, and record the exposure/redaction
-      decision (KubeletFlags = paths only, exposed; credential provider
-      `env[].value` = redacted; everything else exposed).
-- [ ] Note that drop-in configs (`--config-dir`) are intentionally not a separate
-      entry because they are merged into the primary `kubeletconfig` object, and
-      that flags already merged into `KubeletConfiguration` are not duplicated
-      under `kubeletflags`.
-- [ ] Validate: markdown renders/links correctly; cross-check field names against
-      the code added in Tasks 1-2.
