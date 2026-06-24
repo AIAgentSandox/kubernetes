@@ -228,16 +228,24 @@ entries end-to-end on a real kubelet.
 **Files:**
 - Modify: `test/e2e_node/endpoints_test.go`
 
-- [ ] Extend `getKubeletConfigz` / the `configzWrapper` struct (or add a parallel
+- [x] Extend `getKubeletConfigz` / the `configzWrapper` struct (or add a parallel
       raw-map fetch) so the test can read the `kubeletflags` and
       `credentialproviderconfig` keys in addition to `kubeletconfig`. Reuse the
       existing HTTPS + bearer-token request helper.
-- [ ] Add a test case asserting the `kubeletflags` entry is present, carries the
+      (Done: factored the HTTPS+bearer request into `fetchKubeletConfigz`; added
+      `getKubeletConfigzRaw` returning `map[string]json.RawMessage` so optional
+      entries can be detected; `getKubeletConfigz` now delegates to the shared
+      helper.)
+- [x] Add a test case asserting the `kubeletflags` entry is present, carries the
       expected `apiVersion`/`kind`, and reflects a known flag value the node is
       started with (e.g. `imageCredentialProviderConfig`/`rootDirectory`, or a
       flag toggled via the e2e_node kubelet restart helpers in
       `util_kubeletconfig.go`/`util.go`).
-- [ ] Add a test case for `credentialproviderconfig`: when the node's kubelet is
+      (Done: "should expose the non-merged command-line flags under kubeletflags
+      in /configz" asserts `kubelet.config.k8s.io/v1alpha1`/`KubeletFlags` and a
+      non-empty `rootDirectory`, decoded into a test-local `kubeletFlagsConfigz`
+      view.)
+- [x] Add a test case for `credentialproviderconfig`: when the node's kubelet is
       configured with `--image-credential-provider-config`, assert the entry is
       present, has the expected `apiVersion`/`kind`, contains the configured
       provider name(s)/matchImages, and that any `env[].value` is redacted
@@ -245,8 +253,22 @@ entries end-to-end on a real kubelet.
       credential provider config, gate this case appropriately (skip with a clear
       message, or use the restart helper to start the kubelet with a temporary
       credential provider config and revert afterward).
-- [ ] Keep the suite `WithSerial` where kubelet restarts are involved, matching
+      (Done: "should expose the credential provider config under
+      credentialproviderconfig in /configz when configured" decodes into
+      `k8s.io/kubelet/config/v1.CredentialProviderConfig`, asserts
+      `kubelet.config.k8s.io/v1`/`CredentialProviderConfig`, non-empty provider
+      names + matchImages, and that any non-empty `env[].value` equals
+      `[REDACTED]`; it `ginkgo.Skip`s with a clear message when the entry is
+      absent. The e2e_node remote setup already starts the kubelet with
+      `--image-credential-provider-config` via
+      `test/e2e_node/remote/node_e2e.go`/`utils.go`, whose GCP config carries a
+      non-empty `env` value to exercise redaction.)
+- [x] Keep the suite `WithSerial` where kubelet restarts are involved, matching
       the existing "Kubelet Endpoints" suite conventions.
-- [ ] Validate: `go vet ./test/e2e_node/...` compiles; `gofmt`/`goimports` clean.
-      (Note: the e2e_node suite requires a running node environment to execute;
+      (Done: the new cases live in the existing "Kubelet Endpoints"
+      `framework.WithSerial()` SIGDescribe; they read existing config and need no
+      additional restart.)
+- [x] Validate: `go vet ./test/e2e_node/...` compiles; `gofmt`/`goimports` clean.
+      (Done: `go vet ./test/e2e_node/` exits 0; `gofmt -l` reports the file clean.
+      Note: the e2e_node suite requires a running node environment to execute;
       compilation/vet is the automatable gate here.)
