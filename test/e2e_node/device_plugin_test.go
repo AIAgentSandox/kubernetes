@@ -519,6 +519,94 @@ func testDevicePlugin(f *framework.Framework, pluginSockDir string) {
 			e2epod.NewPodClient(f).RemoveFinalizer(context.TODO(), podSpec.Name, testFinalizer)
 		})
 
+		// Regression test for https://issues.k8s.io/138446
+		// When a pod has both an init container and a regular container requesting the same device plugin resource,
+		// and the init container has already completed, restarting the kubelet should not cause the pod to fail
+		// with an UnexpectedAdmissionError. Previously, the device manager would try to re-allocate for the
+		// completed init container and fail because there were no healthy devices available yet.
+		ginkgo.It("Keeps device plugin assignments across kubelet restarts for pods with completed init containers", func(ctx context.Context) {
+			podRECMD := "devs=$(ls /tmp/ | egrep '^Dev-[0-9]+$') && echo stub devices: $devs && sleep %s"
+			rl := v1.ResourceList{v1.ResourceName(e2enode.SampleDeviceResourceName): *resource.NewQuantity(1, resource.DecimalSI)}
+			pod := &v1.Pod{
+				ObjectMeta: metav1.ObjectMeta{Name: "device-plugin-test-" + string(uuid.NewUUID())},
+				Spec: v1.PodSpec{
+					RestartPolicy: v1.RestartPolicyAlways,
+					InitContainers: []v1.Container{
+						{
+							Image:   busyboxImage,
+							Name:    "init-1",
+							Command: []string{"sh", "-c", fmt.Sprintf(podRECMD, sleepIntervalToCompletion)},
+							Resources: v1.ResourceRequirements{
+								Limits:   rl,
+								Requests: rl,
+							},
+						},
+					},
+					Containers: []v1.Container{{
+						Image:   busyboxImage,
+						Name:    "regular-1",
+						Command: []string{"sh", "-c", fmt.Sprintf(podRECMD, sleepIntervalForever)},
+						Resources: v1.ResourceRequirements{
+							Limits:   rl,
+							Requests: rl,
+						},
+					}},
+				},
+			}
+
+			ginkgo.By("Creating a pod with an init container and a regular container both requesting the same device")
+			pod1 := e2epod.NewPodClient(f).CreateSync(ctx, pod)
+			deviceIDRE := "stub devices: (Dev-[0-9]+)"
+
+			ginkgo.By("Verifying the init container got a device and completed")
+			initDevID, err := parseLog(ctx, f, pod1.Name, pod1.Spec.InitContainers[0].Name, deviceIDRE)
+			framework.ExpectNoError(err, "getting logs for init container %q", pod1.Spec.InitContainers[0].Name)
+			gomega.Expect(initDevID).To(gomega.Not(gomega.Equal("")), "init container requested a device but started successfully without")
+
+			ginkgo.By("Verifying the regular container got a device and is running")
+			regDevID, err := parseLog(ctx, f, pod1.Name, pod1.Spec.Containers[0].Name, deviceIDRE)
+			framework.ExpectNoError(err, "getting logs for regular container %q", pod1.Spec.Containers[0].Name)
+			gomega.Expect(regDevID).To(gomega.Not(gomega.Equal("")), "regular container requested a device but started successfully without")
+
+			pod1, err = e2epod.NewPodClient(f).Get(ctx, pod1.Name, metav1.GetOptions{})
+			framework.ExpectNoError(err)
+			framework.Logf("testing pod: pre-restart UID=%s namespace=%s name=%s ready=%v", pod1.UID, pod1.Namespace, pod1.Name, podutils.IsPodReady(pod1))
+
+			ginkgo.By("Restarting Kubelet")
+			restartKubelet(ctx, true)
+
+			ginkgo.By("Wait for node to be ready again")
+			framework.ExpectNoError(e2enode.WaitForAllNodesSchedulable(ctx, f.ClientSet, 5*time.Minute))
+
+			ginkgo.By("Waiting for resource to become available on the local node after restart")
+			gomega.Eventually(ctx, func() bool {
+				node, ready := getLocalTestNode(ctx, f)
+				return ready &&
+					e2enode.CountSampleDeviceCapacity(node) == e2enode.SampleDevsAmount &&
+					e2enode.CountSampleDeviceAllocatable(node) == e2enode.SampleDevsAmount
+			}, 30*time.Second, framework.Poll).Should(gomega.BeTrueBecause("expected resource to be available after restart"))
+
+			ginkgo.By("Checking the same instance of the pod is still running after kubelet restart")
+			gomega.Eventually(ctx, getPodByName).
+				WithArguments(f, pod1.Name).
+				WithTimeout(time.Minute).
+				Should(BeTheSamePodStillRunning(pod1),
+					"the same pod instance not running across kubelet restarts, pods with completed init containers requesting devices should not be perturbed by kubelet restarts")
+
+			pod2, err := e2epod.NewPodClient(f).Get(ctx, pod1.Name, metav1.GetOptions{})
+			framework.ExpectNoError(err)
+			framework.Logf("testing pod: post-restart UID=%s namespace=%s name=%s ready=%v", pod2.UID, pod2.Namespace, pod2.Name, podutils.IsPodReady(pod2))
+
+			ginkgo.By("Verifying the device assignment after kubelet restart using podresources API")
+			gomega.Eventually(ctx, func() error {
+				v1PodResources, err = getV1NodeDevices(ctx)
+				return err
+			}, 30*time.Second, framework.Poll).ShouldNot(gomega.HaveOccurred(), "cannot fetch the compute resource assignment after kubelet restart")
+
+			err, _ = checkPodResourcesAssignment(v1PodResources, pod2.Namespace, pod2.Name, pod2.Spec.Containers[0].Name, e2enode.SampleDeviceResourceName, []string{regDevID})
+			framework.ExpectNoError(err, "inconsistent device assignment for regular container after kubelet restart")
+		})
+
 		// simulate device plugin re-registration, *but not* container and kubelet restart.
 		// After the device plugin has re-registered, the list healthy devices is repopulated based on the devices discovered.
 		// Once Pod2 is running we determine the device that was allocated it. As long as the device allocation succeeds the
