@@ -21,6 +21,7 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
+	"maps"
 	"math"
 	"net"
 	"net/http"
@@ -2688,9 +2689,7 @@ func (kl *Kubelet) retryDeferredAdmissions(ctx context.Context) {
 		return
 	}
 	deferred := make(map[types.UID]time.Time, len(kl.podsWithDeferredAdmission))
-	for uid, firstSeen := range kl.podsWithDeferredAdmission {
-		deferred[uid] = firstSeen
-	}
+	maps.Copy(deferred, kl.podsWithDeferredAdmission)
 	kl.podsWithDeferredAdmissionLock.Unlock()
 
 	now := kl.clock.Now()

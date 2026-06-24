@@ -2228,10 +2228,10 @@ func TestDevicesToAllocateUnregisteredDeviceReturnsDeviceNotReadyError(t *testin
 	// device plugin is considered not yet registered and allocation must return a
 	// deferrable DeviceNotReadyError.
 	_, err := testManager.devicesToAllocate(tCtx, "pod1", "con1", resourceName, 1, sets.New[string]())
-	as.Error(err)
+	require.Error(t, err)
 
 	var devErr *admission.DeviceNotReadyError
-	as.ErrorAs(err, &devErr, "expected a *admission.DeviceNotReadyError for an unregistered device")
+	require.ErrorAs(t, err, &devErr, "expected a *admission.DeviceNotReadyError for an unregistered device")
 	as.Equal(admission.ErrorReasonDeviceNotReady, admission.GetPodAdmitResult(err).Reason)
 	as.True(admission.GetPodAdmitResult(err).Defer, "unregistered device error should be deferrable")
 }
