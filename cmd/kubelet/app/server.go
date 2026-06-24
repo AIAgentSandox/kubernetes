@@ -582,6 +582,25 @@ func initConfigz(ctx context.Context, kc *kubeletconfiginternal.KubeletConfigura
 	return nil
 }
 
+// initFlagsConfigz registers the command-line flags that are NOT merged into
+// KubeletConfiguration (the fields of options.KubeletFlags) under the
+// "kubeletflags" key of the /configz endpoint. Flags that are merged into
+// KubeletConfiguration are already visible through the existing "kubeletconfig"
+// entry and are not duplicated here.
+func initFlagsConfigz(ctx context.Context, f *options.KubeletFlags) error {
+	logger := klog.FromContext(ctx)
+	cz, err := configz.New("kubeletflags")
+	if err != nil {
+		logger.Error(err, "Failed to register configz for kubelet flags")
+		return err
+	}
+	if err := cz.Set(newKubeletFlagsConfigz(f)); err != nil {
+		logger.Error(err, "Failed to register kubelet flags config")
+		return err
+	}
+	return nil
+}
+
 // makeEventRecorder sets up kubeDeps.Recorder if it's nil. It's a no-op otherwise.
 func makeEventRecorder(ctx context.Context, kubeDeps *kubelet.Dependencies, nodeName types.NodeName) {
 	if kubeDeps.Recorder != nil {
@@ -776,6 +795,13 @@ func run(ctx context.Context, s *options.KubeletServer, kubeDeps *kubelet.Depend
 	err = initConfigz(ctx, &s.KubeletConfiguration)
 	if err != nil {
 		logger.Error(err, "Failed to register kubelet configuration with configz")
+	}
+
+	// Register the non-merged command-line flags (options.KubeletFlags) under the
+	// "kubeletflags" key of /configz so the full set of kubelet configuration
+	// sources is observable, not just KubeletConfiguration.
+	if err = initFlagsConfigz(ctx, &s.KubeletFlags); err != nil {
+		logger.Error(err, "Failed to register kubelet flags with configz")
 	}
 
 	var cgroupRoots []string

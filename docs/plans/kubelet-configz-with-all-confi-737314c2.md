@@ -123,7 +123,7 @@ an external GVK, introduce a small exposable wrapper type.
 - Modify: `cmd/kubelet/app/server.go` (register the new entry from `run()`)
 - Modify/Create: `cmd/kubelet/app/server_test.go` (unit tests)
 
-- [ ] Define an exposable, JSON-serializable type for the flags, e.g.
+- [x] Define an exposable, JSON-serializable type for the flags, e.g.
       `KubeletFlagsConfigz` embedding `metav1.TypeMeta` plus the relevant
       `KubeletFlags` fields with `json` tags (kubeconfig, bootstrap kubeconfig,
       hostname override, node IP, cert dir, cloud provider, cloud config file,
@@ -133,25 +133,34 @@ an external GVK, introduce a small exposable wrapper type.
       `ContainerRuntimeOptions` fields such as `ImageCredentialProviderConfigPath`
       and `ImageCredentialProviderBinDir`). Document why each field is included
       and that none carry secret contents (paths/IDs only).
-- [ ] Make the mechanism of detecting whether the flag merged to the config or not universal
-- [ ] Implement `runtime.Object` on the type (`GetObjectKind()` via the embedded
+      (Done: `KubeletFlagsConfigz` in `cmd/kubelet/app/configz_flags.go`.)
+- [x] Make the mechanism of detecting whether the flag merged to the config or not universal
+      (Done: `nonMergedFlagNames()` diffs the `KubeletFlags.AddFlags` flag set
+      against the `AddKubeletConfigFlags` flag set rather than hardcoding;
+      `kubeletFlagsConfigzCoveredFlags` is guarded against it by
+      `TestKubeletFlagsConfigzCoversAllNonMergedFlags`.)
+- [x] Implement `runtime.Object` on the type (`GetObjectKind()` via the embedded
       `TypeMeta`, plus a `DeepCopyObject()` method). Stamp a descriptive external
       GVK (e.g. group `kubelet.config.k8s.io`, an appropriate version, kind
       `KubeletFlags`) so `configz.Set` accepts it.
-- [ ] Add a builder function that maps an `*options.KubeletFlags` (or
+      (Done: GVK `kubelet.config.k8s.io/v1alpha1`, kind `KubeletFlags`.)
+- [x] Add a builder function that maps an `*options.KubeletFlags` (or
       `*options.KubeletServer`) into the new type.
-- [ ] In `cmd/kubelet/app/server.go`, register the entry: either extend
+      (Done: `newKubeletFlagsConfigz(*options.KubeletFlags)`.)
+- [x] In `cmd/kubelet/app/server.go`, register the entry: either extend
       `initConfigz` to also take the flags and call `configz.New("kubeletflags")`
       + `cz.Set(...)`, or add a sibling `initFlagsConfigz`. Wire it from `run()`
       where `initConfigz` is currently invoked (the `*options.KubeletServer`
       `s` is in scope). Log and return the error on failure, matching the
       existing `initConfigz` error handling.
-- [ ] Write/update unit tests in `cmd/kubelet/app/server_test.go`: build the
+      (Done: `initFlagsConfigz`, wired from `run()` next to `initConfigz`.)
+- [x] Write/update unit tests in `cmd/kubelet/app/server_test.go`: build the
       flags type from a populated `KubeletFlags`, register/marshal it through the
       configz path, and assert (a) the JSON is keyed `kubeletflags`, (b) it
       carries the expected `apiVersion`/`kind`, and (c) representative fields
       (e.g. `imageCredentialProviderConfig`, `rootDirectory`) round-trip.
-- [ ] Validate: `go build ./cmd/kubelet/...` and
+      (Done: `cmd/kubelet/app/configz_flags_test.go`.)
+- [x] Validate: `go build ./cmd/kubelet/...` and
       `go test ./cmd/kubelet/app/...` pass; `gofmt`/`goimports` clean.
 
 ### Task 2: Expose the credential provider config (`credentialproviderconfig`) in `/configz`
