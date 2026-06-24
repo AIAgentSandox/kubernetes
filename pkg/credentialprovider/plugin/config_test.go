@@ -749,6 +749,58 @@ providers:
 	}
 }
 
+// TestGetCredentialProviderConfig verifies the exported wrapper returns the same
+// decoded config as the internal reader (just without the hash), and surfaces
+// errors for invalid paths.
+func TestGetCredentialProviderConfig(t *testing.T) {
+	file, err := os.CreateTemp("", "config.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer utiltesting.CloseAndRemove(t, file)
+
+	const data = `---
+kind: CredentialProviderConfig
+apiVersion: kubelet.config.k8s.io/v1alpha1
+providers:
+  - name: test
+    matchImages:
+    - "registry.io/foobar"
+    defaultCacheDuration: 10m
+    apiVersion: credentialprovider.kubelet.k8s.io/v1alpha1
+    env:
+    - name: FOO
+      value: BAR`
+	if _, err = file.WriteString(data); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := GetCredentialProviderConfig(file.Name())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	want := &kubeletconfig.CredentialProviderConfig{
+		Providers: []kubeletconfig.CredentialProvider{
+			{
+				Name:                 "test",
+				MatchImages:          []string{"registry.io/foobar"},
+				DefaultCacheDuration: &metav1.Duration{Duration: 10 * time.Minute},
+				APIVersion:           "credentialprovider.kubelet.k8s.io/v1alpha1",
+				Env: []kubeletconfig.ExecEnvVar{
+					{Name: "FOO", Value: "BAR"},
+				},
+			},
+		},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("expected config %v, got %v", want, got)
+	}
+
+	if _, err := GetCredentialProviderConfig(""); err == nil {
+		t.Fatal("expected error for empty path, got none")
+	}
+}
+
 func Test_validateCredentialProviderConfig(t *testing.T) {
 	testcases := []struct {
 		name                          string

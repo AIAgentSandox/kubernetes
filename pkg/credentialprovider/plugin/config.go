@@ -120,6 +120,18 @@ func readCredentialProviderConfig(configPath string) (*kubeletconfig.CredentialP
 	return mergedConfig, configHash, nil
 }
 
+// GetCredentialProviderConfig reads and decodes the credential provider config
+// at the given path (a file or a directory) into the internal
+// CredentialProviderConfig type. It is exported so that callers outside this
+// package (e.g. cmd/kubelet publishing the loaded config via the /configz
+// endpoint) can obtain the decoded configuration without re-implementing the
+// parsing/merging logic. The returned config is not validated; callers that need
+// validation should use RegisterCredentialProviderPlugins instead.
+func GetCredentialProviderConfig(configPath string) (*kubeletconfig.CredentialProviderConfig, error) {
+	config, _, err := readCredentialProviderConfig(configPath)
+	return config, err
+}
+
 // decode decodes data into the internal CredentialProviderConfig type.
 func decode(data []byte) (*kubeletconfig.CredentialProviderConfig, error) {
 	obj, gvk, err := codecs.UniversalDecoder().Decode(data, nil, nil)

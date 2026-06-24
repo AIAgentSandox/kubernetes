@@ -177,30 +177,46 @@ successfully.
 - Modify/Create: `cmd/kubelet/app/server_test.go` and/or
   `pkg/credentialprovider/plugin/config_test.go` (unit tests, incl. redaction)
 
-- [ ] Expose the credential provider config to `cmd/kubelet`: add an exported
+- [x] Expose the credential provider config to `cmd/kubelet`: add an exported
       wrapper in `pkg/credentialprovider/plugin/config.go` (e.g.
       `GetCredentialProviderConfig(path) (*kubeletconfig.CredentialProviderConfig, error)`)
       that calls the existing `readCredentialProviderConfig`, or export the reader
       directly. Keep the existing internal callers working.
-- [ ] In `cmd/kubelet/app/server.go`, after config load (where
+      (Done: `GetCredentialProviderConfig` wraps `readCredentialProviderConfig`,
+      dropping the hash; internal callers unchanged.)
+- [x] In `cmd/kubelet/app/server.go`, after config load (where
       `ImageCredentialProviderConfigPath` is known), when the path is non-empty:
       load the config, deep-copy it, and **redact** every non-empty
       `providers[].env[].value` to `[REDACTED]`.
-- [ ] Convert the (redacted) internal `CredentialProviderConfig` to its external
+      (Done: `redactCredentialProviderConfig` in
+      `cmd/kubelet/app/configz_credentialprovider.go` deep-copies via `DeepCopy()`
+      and redacts non-empty env values; called from `initCredentialProviderConfigz`.)
+- [x] Convert the (redacted) internal `CredentialProviderConfig` to its external
       versioned type using the credential-provider scheme/codecs, stamp the GVK,
       and register via `configz.New("credentialproviderconfig")` + `cz.Set(...)`
       (mirroring `setConfigz`).
-- [ ] Handle the disabled/empty case gracefully: when the path is empty, do not
+      (Done: `setCredentialProviderConfigz` converts internal ->
+      `k8s.io/kubelet/config/v1.CredentialProviderConfig` via
+      `kubeletscheme.NewSchemeAndCodecs`, stamps GVK
+      `kubelet.config.k8s.io/v1` kind `CredentialProviderConfig`.)
+- [x] Handle the disabled/empty case gracefully: when the path is empty, do not
       register the entry (so `/configz` simply omits `credentialproviderconfig`).
       A load/parse failure should log and not crash kubelet startup beyond
       existing behavior — match how the credential provider is otherwise
       initialized.
-- [ ] Write/update unit tests: (a) a redaction test asserting non-empty
+      (Done: `initCredentialProviderConfigz` returns nil without registering when
+      path is empty; a load error is logged and returns nil. Wired from `run()`
+      next to `initConfigz`/`initFlagsConfigz`, logging-only on error.)
+- [x] Write/update unit tests: (a) a redaction test asserting non-empty
       `env[].value` becomes `[REDACTED]` while `name`, `matchImages`, `args`,
       `tokenAttributes` are preserved; (b) a test that the registered entry is
       keyed `credentialproviderconfig` with the expected `apiVersion`/`kind`;
       (c) a test that no entry is registered when the path is empty.
-- [ ] Validate: `go build ./cmd/kubelet/... ./pkg/credentialprovider/...` and
+      (Done: `cmd/kubelet/app/configz_credentialprovider_test.go`
+      (`TestRedactCredentialProviderConfig`, `TestInitCredentialProviderConfigz`,
+      `TestInitCredentialProviderConfigzEmptyPath`) plus
+      `TestGetCredentialProviderConfig` in `config_test.go`.)
+- [x] Validate: `go build ./cmd/kubelet/... ./pkg/credentialprovider/...` and
       `go test ./cmd/kubelet/app/... ./pkg/credentialprovider/plugin/...` pass;
       `gofmt`/`goimports` clean.
 

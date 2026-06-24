@@ -804,6 +804,14 @@ func run(ctx context.Context, s *options.KubeletServer, kubeDeps *kubelet.Depend
 		logger.Error(err, "Failed to register kubelet flags with configz")
 	}
 
+	// Register the credential provider config (loaded from
+	// --image-credential-provider-config) under the "credentialproviderconfig"
+	// key of /configz, with secret env values redacted. The entry is omitted
+	// when no credential provider config path is configured.
+	if err = initCredentialProviderConfigz(ctx, s.KubeletFlags.ImageCredentialProviderConfigPath); err != nil {
+		logger.Error(err, "Failed to register credential provider config with configz")
+	}
+
 	var cgroupRoots []string
 	nodeAllocatableRoot := cm.NodeAllocatableRoot(s.CgroupRoot, s.CgroupsPerQOS, s.CgroupDriver)
 	cgroupRoots = append(cgroupRoots, nodeAllocatableRoot)
