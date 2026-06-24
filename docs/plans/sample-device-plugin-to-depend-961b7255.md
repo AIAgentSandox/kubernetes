@@ -4,4 +4,4 @@
 
 ### Task 1: sample-device-plugin to dependencies.yaml
 
-- [ ] Add sample-device-plugin to dependencies.yaml so all links to the version will be updated simultaneously.
+- [x] Add sample-device-plugin to dependencies.yaml so all links to the version will be updated simultaneously.
