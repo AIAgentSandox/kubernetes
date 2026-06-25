@@ -28,6 +28,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/apimachinery/pkg/util/validation"
 	"k8s.io/apimachinery/pkg/util/validation/field"
+	configv1 "k8s.io/kubelet/config/v1"
 	credentialproviderv1 "k8s.io/kubelet/pkg/apis/credentialprovider/v1"
 	"k8s.io/kubernetes/pkg/credentialprovider"
 	kubeletconfig "k8s.io/kubernetes/pkg/kubelet/apis/config"
@@ -39,6 +40,45 @@ var (
 		string(kubeletconfig.TokenServiceAccountTokenCacheType),
 	)
 )
+
+// redactedValue is the placeholder used to mask sensitive credential provider
+// configuration fields when the configuration is exposed via the kubelet's
+// /configz endpoint.
+const redactedValue = "<redacted>"
+
+// GetCredentialProviderConfig reads the credential provider configuration from the
+// given path and returns it as a v1 versioned object suitable for serving via the
+// kubelet's /configz endpoint.
+//
+// Sensitive fields are redacted before the object is returned. Specifically, the
+// values of the per-provider environment variables (Env[*].Value) are replaced with
+// a placeholder because they commonly carry secrets such as registry credentials or
+// API keys. The variable names are preserved so operators can still see which
+// variables are configured. All other fields (provider name, matchImages, args,
+// cache durations, apiVersion, and tokenAttributes) describe how the kubelet invokes
+// the plugin rather than credential material, so they are surfaced as-is.
+func GetCredentialProviderConfig(configPath string) (*configv1.CredentialProviderConfig, error) {
+	internalConfig, _, err := readCredentialProviderConfig(configPath)
+	if err != nil {
+		return nil, err
+	}
+
+	versioned := &configv1.CredentialProviderConfig{}
+	if err := scheme.Convert(internalConfig, versioned, nil); err != nil {
+		return nil, fmt.Errorf("unable to convert credential provider config to %s: %w", configv1.SchemeGroupVersion, err)
+	}
+
+	for i := range versioned.Providers {
+		for j := range versioned.Providers[i].Env {
+			if versioned.Providers[i].Env[j].Value != "" {
+				versioned.Providers[i].Env[j].Value = redactedValue
+			}
+		}
+	}
+
+	versioned.SetGroupVersionKind(configv1.SchemeGroupVersion.WithKind("CredentialProviderConfig"))
+	return versioned, nil
+}
 
 // readCredentialProviderConfig receives a path to a config file or directory.
 // If the path is a directory, it reads all "*.json", "*.yaml" and "*.yml" files in lexicographic order,

@@ -97,6 +97,7 @@ import (
 	"k8s.io/kubernetes/pkg/api/legacyscheme"
 	"k8s.io/kubernetes/pkg/capabilities"
 	"k8s.io/kubernetes/pkg/credentialprovider"
+	credentialproviderplugin "k8s.io/kubernetes/pkg/credentialprovider/plugin"
 	"k8s.io/kubernetes/pkg/features"
 	"k8s.io/kubernetes/pkg/kubelet"
 	kubeletconfiginternal "k8s.io/kubernetes/pkg/kubelet/apis/config"
@@ -582,6 +583,33 @@ func initConfigz(ctx context.Context, kc *kubeletconfiginternal.KubeletConfigura
 	return nil
 }
 
+// initCredentialProviderConfigz registers the kubelet's credential provider configuration
+// with the /configz endpoint under the "credentialproviderconfig" key. Sensitive fields
+// (such as environment variable values, which may carry registry secrets) are redacted by
+// GetCredentialProviderConfig before the configuration is served. This is a no-op when no
+// credential provider config path is configured.
+func initCredentialProviderConfigz(ctx context.Context, configPath string) error {
+	logger := klog.FromContext(ctx)
+	if configPath == "" {
+		return nil
+	}
+	versioned, err := credentialproviderplugin.GetCredentialProviderConfig(configPath)
+	if err != nil {
+		logger.Error(err, "Failed to read credential provider config for configz")
+		return err
+	}
+	cz, err := configz.New("credentialproviderconfig")
+	if err != nil {
+		logger.Error(err, "Failed to register credential provider configz")
+		return err
+	}
+	if err := cz.Set(versioned); err != nil {
+		logger.Error(err, "Failed to register credential provider config")
+		return err
+	}
+	return nil
+}
+
 // makeEventRecorder sets up kubeDeps.Recorder if it's nil. It's a no-op otherwise.
 func makeEventRecorder(ctx context.Context, kubeDeps *kubelet.Dependencies, nodeName types.NodeName) {
 	if kubeDeps.Recorder != nil {
@@ -776,6 +804,12 @@ func run(ctx context.Context, s *options.KubeletServer, kubeDeps *kubelet.Depend
 	err = initConfigz(ctx, &s.KubeletConfiguration)
 	if err != nil {
 		logger.Error(err, "Failed to register kubelet configuration with configz")
+	}
+
+	// Register the credential provider configuration with the /configz endpoint so it
+	// can be inspected alongside the kubelet configuration. Sensitive fields are redacted.
+	if err := initCredentialProviderConfigz(ctx, s.ImageCredentialProviderConfigPath); err != nil {
+		logger.Error(err, "Failed to register credential provider configuration with configz")
 	}
 
 	var cgroupRoots []string
