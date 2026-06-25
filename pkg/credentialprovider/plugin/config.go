@@ -50,13 +50,19 @@ const redactedValue = "<redacted>"
 // given path and returns it as a v1 versioned object suitable for serving via the
 // kubelet's /configz endpoint.
 //
-// Sensitive fields are redacted before the object is returned. Specifically, the
-// values of the per-provider environment variables (Env[*].Value) are replaced with
-// a placeholder because they commonly carry secrets such as registry credentials or
-// API keys. The variable names are preserved so operators can still see which
-// variables are configured. All other fields (provider name, matchImages, args,
-// cache durations, apiVersion, and tokenAttributes) describe how the kubelet invokes
-// the plugin rather than credential material, so they are surfaced as-is.
+// Sensitive fields are redacted before the object is returned. Specifically:
+//   - The values of the per-provider environment variables (Env[*].Value) are replaced
+//     with a placeholder because they commonly carry secrets such as registry credentials
+//     or API keys. The variable names are preserved so operators can still see which
+//     variables are configured.
+//   - The per-provider command-line arguments (Args) are replaced with a single placeholder
+//     when present. Although args usually carry only non-secret flags, the command line is a
+//     recognized secret-leak vector (e.g. a static token or password passed as a flag), so it
+//     is redacted to keep secrets off the remotely reachable /configz endpoint.
+//
+// All other fields (provider name, matchImages, cache durations, apiVersion, and
+// tokenAttributes) describe how the kubelet invokes the plugin rather than credential
+// material, so they are surfaced as-is.
 func GetCredentialProviderConfig(configPath string) (*configv1.CredentialProviderConfig, error) {
 	internalConfig, _, err := readCredentialProviderConfig(configPath)
 	if err != nil {
@@ -73,6 +79,9 @@ func GetCredentialProviderConfig(configPath string) (*configv1.CredentialProvide
 			if versioned.Providers[i].Env[j].Value != "" {
 				versioned.Providers[i].Env[j].Value = redactedValue
 			}
+		}
+		if len(versioned.Providers[i].Args) > 0 {
+			versioned.Providers[i].Args = []string{redactedValue}
 		}
 	}
 

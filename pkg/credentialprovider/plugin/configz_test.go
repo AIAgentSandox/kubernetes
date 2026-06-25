@@ -17,6 +17,7 @@ limitations under the License.
 package plugin
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -68,8 +69,9 @@ providers:
 				if len(p.MatchImages) != 1 || p.MatchImages[0] != "registry.io/foobar" {
 					t.Errorf("expected matchImages preserved, got %v", p.MatchImages)
 				}
-				if len(p.Args) != 1 || p.Args[0] != "--v=5" {
-					t.Errorf("expected args preserved, got %v", p.Args)
+				// Args are redacted to a single placeholder when present.
+				if len(p.Args) != 1 || p.Args[0] != redactedValue {
+					t.Errorf("expected args redacted to [%q], got %v", redactedValue, p.Args)
 				}
 				if len(p.Env) != 2 {
 					t.Fatalf("expected 2 env vars, got %d", len(p.Env))
@@ -87,6 +89,65 @@ providers:
 				// Empty value stays empty (nothing to redact).
 				if p.Env[1].Value != "" {
 					t.Errorf("expected empty env value to remain empty, got %q", p.Env[1].Value)
+				}
+			},
+		},
+		{
+			name: "secrets redacted across multiple providers and env vars",
+			configData: `---
+kind: CredentialProviderConfig
+apiVersion: kubelet.config.k8s.io/v1
+providers:
+  - name: first
+    matchImages:
+    - "registry.io/foobar"
+    defaultCacheDuration: 10m
+    apiVersion: credentialprovider.kubelet.k8s.io/v1
+    args:
+    - --password=first-arg-secret
+    env:
+    - name: A
+      value: first-secret-a
+    - name: B
+      value: first-secret-b
+  - name: second
+    matchImages:
+    - "*.azurecr.io"
+    defaultCacheDuration: 5m
+    apiVersion: credentialprovider.kubelet.k8s.io/v1
+    args:
+    - --token=second-arg-secret
+    env:
+    - name: C
+      value: second-secret-c`,
+			validate: func(t *testing.T, cfg *configv1.CredentialProviderConfig) {
+				if len(cfg.Providers) != 2 {
+					t.Fatalf("expected 2 providers, got %d", len(cfg.Providers))
+				}
+				// Every secret-bearing value across every provider must be redacted,
+				// guarding against indexing bugs in the redaction loops.
+				secrets := []string{
+					"first-arg-secret", "second-arg-secret",
+					"first-secret-a", "first-secret-b", "second-secret-c",
+				}
+				for _, p := range cfg.Providers {
+					for _, a := range p.Args {
+						if a != redactedValue {
+							t.Errorf("provider %q: expected arg redacted, got %q", p.Name, a)
+						}
+					}
+					for _, e := range p.Env {
+						if e.Value != redactedValue {
+							t.Errorf("provider %q: expected env %q value redacted, got %q", p.Name, e.Name, e.Value)
+						}
+					}
+				}
+				// Belt-and-suspenders: no secret may appear anywhere in the converted object.
+				rendered := fmt.Sprintf("%+v", cfg)
+				for _, s := range secrets {
+					if strings.Contains(rendered, s) {
+						t.Errorf("secret %q leaked in redacted config", s)
+					}
 				}
 			},
 		},

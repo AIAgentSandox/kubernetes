@@ -13,6 +13,7 @@
   Security decision (fields hidden on serialization):
   - Redact each provider's `env[*].value` (replaced with `<redacted>`), because environment variable values commonly carry secrets (registry credentials, API keys). This mirrors the existing kubelet precedent of masking `StaticPodURLHeader` values in logs.
   - Env variable `name` is preserved so operators can see which variables are configured.
-  - All other fields (`name`, `matchImages`, `args`, `defaultCacheDuration`, `apiVersion`, `tokenAttributes`) describe how the kubelet invokes the plugin rather than credential material and are surfaced as-is.
+  - Redact each provider's `args` (replaced with a single `<redacted>` placeholder when present). Although args usually carry only non-secret flags, the command line is a recognized secret-leak vector (a static token/password passed as a flag), so it is redacted to keep secrets off the remotely reachable `/configz` endpoint.
+  - All other fields (`name`, `matchImages`, `defaultCacheDuration`, `apiVersion`, `tokenAttributes`) describe how the kubelet invokes the plugin rather than credential material and are surfaced as-is.
 
-  Tests: `pkg/credentialprovider/plugin/configz_test.go` (redaction + empty-path error) and `cmd/kubelet/app/configz_test.go` (configz registration, secret non-leakage, empty-path no-op).
+  Tests: `pkg/credentialprovider/plugin/configz_test.go` (env+args redaction, multi-provider redaction, empty-path error) and `cmd/kubelet/app/configz_test.go` (configz registration, secret non-leakage, empty-path no-op).
