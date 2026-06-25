@@ -24,6 +24,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/apimachinery/pkg/util/validation"
@@ -46,6 +47,36 @@ var (
 // /configz endpoint.
 const redactedValue = "<redacted>"
 
+var (
+	// configzConfigMu guards configzConfig.
+	configzConfigMu sync.RWMutex
+	// configzConfig holds the redacted credential provider configuration that was
+	// consumed by the most recent successful RegisterCredentialProviderPlugins call.
+	// It is served via the /configz endpoint so that the endpoint reflects exactly the
+	// configuration the kubelet registered, rather than a possibly-divergent re-read of
+	// the same path (the file or directory could change between the two reads).
+	configzConfig *configv1.CredentialProviderConfig
+)
+
+// setConfigzCredentialProviderConfig records the redacted configuration consumed by
+// plugin registration so it can later be served via /configz.
+func setConfigzCredentialProviderConfig(config *configv1.CredentialProviderConfig) {
+	configzConfigMu.Lock()
+	defer configzConfigMu.Unlock()
+	configzConfig = config
+}
+
+// getConfigzCredentialProviderConfig returns a copy of the redacted configuration
+// consumed by plugin registration, or nil if registration has not run.
+func getConfigzCredentialProviderConfig() *configv1.CredentialProviderConfig {
+	configzConfigMu.RLock()
+	defer configzConfigMu.RUnlock()
+	if configzConfig == nil {
+		return nil
+	}
+	return configzConfig.DeepCopy()
+}
+
 // GetCredentialProviderConfig reads the credential provider configuration from the
 // given path and returns it as a v1 versioned object suitable for serving via the
 // kubelet's /configz endpoint.
@@ -64,15 +95,37 @@ const redactedValue = "<redacted>"
 // tokenAttributes) describe how the kubelet invokes the plugin rather than credential
 // material, so they are surfaced as-is.
 func GetCredentialProviderConfig(configPath string) (*configv1.CredentialProviderConfig, error) {
+	// Prefer the configuration that plugin registration actually consumed so that
+	// /configz cannot diverge from the configuration the kubelet is running with.
+	// readCredentialProviderConfig is only used as a fallback for callers that have
+	// not gone through registration (e.g. unit tests).
+	if cached := getConfigzCredentialProviderConfig(); cached != nil {
+		return cached, nil
+	}
+
 	internalConfig, _, err := readCredentialProviderConfig(configPath)
 	if err != nil {
 		return nil, err
 	}
 
+	return redactCredentialProviderConfig(internalConfig)
+}
+
+// redactCredentialProviderConfig converts an internal CredentialProviderConfig to its
+// v1 versioned form with sensitive fields redacted, suitable for serving via /configz.
+// See GetCredentialProviderConfig for the redaction rationale.
+func redactCredentialProviderConfig(internalConfig *kubeletconfig.CredentialProviderConfig) (*configv1.CredentialProviderConfig, error) {
 	versioned := &configv1.CredentialProviderConfig{}
 	if err := scheme.Convert(internalConfig, versioned, nil); err != nil {
 		return nil, fmt.Errorf("unable to convert credential provider config to %s: %w", configv1.SchemeGroupVersion, err)
 	}
+
+	// The generated conversion aliases the internal config's slices (Providers,
+	// Args, Env, ...) into the versioned object via unsafe.Pointer, so the two
+	// objects share backing storage. Deep-copy before redacting so the in-place
+	// mutations below do not corrupt internalConfig, which the caller still uses
+	// to register the credential provider plugins.
+	versioned = versioned.DeepCopy()
 
 	for i := range versioned.Providers {
 		for j := range versioned.Providers[i].Env {

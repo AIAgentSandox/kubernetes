@@ -162,6 +162,15 @@ func RegisterCredentialProviderPlugins(pluginConfigPath, pluginBinDir string,
 		return fmt.Errorf("failed to validate credential provider config: %v", errs.ToAggregate())
 	}
 
+	// Cache the redacted form of the configuration that is actually being registered so
+	// the /configz endpoint serves exactly this configuration instead of re-reading the
+	// path, which could have changed since this read.
+	redactedConfig, err := redactCredentialProviderConfig(credentialProviderConfig)
+	if err != nil {
+		return fmt.Errorf("failed to prepare credential provider config for configz: %w", err)
+	}
+	setConfigzCredentialProviderConfig(redactedConfig)
+
 	// Register metrics for credential providers
 	registerMetrics()
 

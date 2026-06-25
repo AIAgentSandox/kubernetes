@@ -806,12 +806,6 @@ func run(ctx context.Context, s *options.KubeletServer, kubeDeps *kubelet.Depend
 		logger.Error(err, "Failed to register kubelet configuration with configz")
 	}
 
-	// Register the credential provider configuration with the /configz endpoint so it
-	// can be inspected alongside the kubelet configuration. Sensitive fields are redacted.
-	if err := initCredentialProviderConfigz(ctx, s.ImageCredentialProviderConfigPath); err != nil {
-		logger.Error(err, "Failed to register credential provider configuration with configz")
-	}
-
 	var cgroupRoots []string
 	nodeAllocatableRoot := cm.NodeAllocatableRoot(s.CgroupRoot, s.CgroupsPerQOS, s.CgroupDriver)
 	cgroupRoots = append(cgroupRoots, nodeAllocatableRoot)
@@ -974,6 +968,16 @@ func run(ctx context.Context, s *options.KubeletServer, kubeDeps *kubelet.Depend
 
 	if err := RunKubelet(ctx, s, kubeDeps); err != nil {
 		return err
+	}
+
+	// Register the credential provider configuration with the /configz endpoint so it
+	// can be inspected alongside the kubelet configuration. Sensitive fields are redacted.
+	// This runs after RunKubelet so that credential provider plugin registration (which
+	// happens during kubelet construction) has already cached the exact configuration it
+	// consumed; serving that cached configuration is what keeps /configz from diverging
+	// from the configuration the kubelet is actually running with.
+	if err := initCredentialProviderConfigz(ctx, s.ImageCredentialProviderConfigPath); err != nil {
+		logger.Error(err, "Failed to register credential provider configuration with configz")
 	}
 
 	if s.HealthzPort > 0 {

@@ -23,7 +23,9 @@ import (
 	"strings"
 	"testing"
 
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	configv1 "k8s.io/kubelet/config/v1"
+	kubeletconfig "k8s.io/kubernetes/pkg/kubelet/apis/config"
 )
 
 func TestGetCredentialProviderConfig(t *testing.T) {
@@ -160,6 +162,10 @@ providers:
 
 	for _, tc := range testcases {
 		t.Run(tc.name, func(t *testing.T) {
+			// Ensure the path-reading fallback is exercised regardless of whether a
+			// prior test populated the registration cache.
+			setConfigzCredentialProviderConfig(nil)
+
 			var configPath string
 			if tc.configData != "" {
 				dir := t.TempDir()
@@ -184,5 +190,81 @@ providers:
 			}
 			tc.validate(t, cfg)
 		})
+	}
+}
+
+// TestRedactCredentialProviderConfig_DoesNotMutateInternal verifies that redacting
+// the configuration for /configz does not corrupt the internal config the caller
+// still uses to register plugins. The generated internal->v1 conversion aliases the
+// internal slices via unsafe.Pointer, so a naive redaction would rewrite the very
+// Args/Env values the kubelet passes to the credential provider plugins.
+func TestRedactCredentialProviderConfig_DoesNotMutateInternal(t *testing.T) {
+	internal := &kubeletconfig.CredentialProviderConfig{
+		Providers: []kubeletconfig.CredentialProvider{{
+			Name:                 "test",
+			MatchImages:          []string{"registry.io/foobar"},
+			DefaultCacheDuration: &metav1.Duration{},
+			APIVersion:           "credentialprovider.kubelet.k8s.io/v1",
+			Args:                 []string{"--token=real-secret"},
+			Env: []kubeletconfig.ExecEnvVar{
+				{Name: "AWS_SECRET_ACCESS_KEY", Value: "super-secret-value"},
+			},
+		}},
+	}
+
+	redacted, err := redactCredentialProviderConfig(internal)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// The returned object must be redacted.
+	if got := redacted.Providers[0].Args; len(got) != 1 || got[0] != redactedValue {
+		t.Errorf("expected redacted args [%q], got %v", redactedValue, got)
+	}
+	if got := redacted.Providers[0].Env[0].Value; got != redactedValue {
+		t.Errorf("expected redacted env value %q, got %q", redactedValue, got)
+	}
+
+	// The internal config must be left untouched so plugin registration uses the
+	// real values.
+	if got := internal.Providers[0].Args; len(got) != 1 || got[0] != "--token=real-secret" {
+		t.Errorf("internal args were mutated by redaction: %v", got)
+	}
+	if got := internal.Providers[0].Env[0].Value; got != "super-secret-value" {
+		t.Errorf("internal env value was mutated by redaction: %q", got)
+	}
+}
+
+// TestGetCredentialProviderConfig_PrefersRegisteredConfig verifies that once plugin
+// registration has cached the configuration it consumed, GetCredentialProviderConfig
+// returns that cached (redacted) configuration instead of re-reading the path. This
+// guarantees /configz reflects exactly what the kubelet registered, even if the file
+// changes between the registration read and the configz read.
+func TestGetCredentialProviderConfig_PrefersRegisteredConfig(t *testing.T) {
+	t.Cleanup(func() { setConfigzCredentialProviderConfig(nil) })
+
+	cached := &configv1.CredentialProviderConfig{
+		Providers: []configv1.CredentialProvider{{Name: "registered-provider"}},
+	}
+	setConfigzCredentialProviderConfig(cached)
+
+	// A path that does not exist would error if it were read; the cached value must
+	// be returned instead, proving the path is not consulted.
+	cfg, err := GetCredentialProviderConfig("/does/not/exist")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(cfg.Providers) != 1 || cfg.Providers[0].Name != "registered-provider" {
+		t.Fatalf("expected cached config to be returned, got %+v", cfg.Providers)
+	}
+
+	// The returned object must be a copy so callers cannot mutate the cached config.
+	cfg.Providers[0].Name = "mutated"
+	again, err := GetCredentialProviderConfig("/does/not/exist")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if again.Providers[0].Name != "registered-provider" {
+		t.Fatalf("cached config was mutated through returned value: %q", again.Providers[0].Name)
 	}
 }
