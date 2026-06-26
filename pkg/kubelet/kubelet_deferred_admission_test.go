@@ -262,6 +262,63 @@ func TestDeferredAdmissionOrphanCleanup(t *testing.T) {
 	require.False(t, kl.IsPodAdmissionDeferred(pod.UID), "orphaned deferred pod should be pruned")
 }
 
+// HandlePodSyncs skips dispatch for deferred pods.
+func TestDeferredAdmissionSkippedByHandlePodSyncs(t *testing.T) {
+	tCtx := ktesting.Init(t)
+	testKubelet, h := newDeferredAdmissionKubelet(t)
+	defer testKubelet.Cleanup()
+	kl := testKubelet.kubelet
+	dispatched := recordDispatches(kl)
+
+	h.admit = false
+	h.deferResult = true
+	pod := newDeferTestPod("sync-skip-1")
+	kl.HandlePodAdditions(tCtx, []*v1.Pod{pod})
+	require.True(t, kl.IsPodAdmissionDeferred(pod.UID))
+
+	kl.HandlePodSyncs(tCtx, []*v1.Pod{pod})
+
+	require.NotContains(t, dispatched, pod.UID, "HandlePodSyncs must not dispatch a deferred pod")
+}
+
+// HandlePodUpdates skips dispatch for deferred pods.
+func TestDeferredAdmissionSkippedByHandlePodUpdates(t *testing.T) {
+	tCtx := ktesting.Init(t)
+	testKubelet, h := newDeferredAdmissionKubelet(t)
+	defer testKubelet.Cleanup()
+	kl := testKubelet.kubelet
+	dispatched := recordDispatches(kl)
+
+	h.admit = false
+	h.deferResult = true
+	pod := newDeferTestPod("update-skip-1")
+	kl.HandlePodAdditions(tCtx, []*v1.Pod{pod})
+	require.True(t, kl.IsPodAdmissionDeferred(pod.UID))
+
+	kl.HandlePodUpdates(tCtx, []*v1.Pod{pod})
+
+	require.NotContains(t, dispatched, pod.UID, "HandlePodUpdates must not dispatch a deferred pod")
+}
+
+// HandlePodReconcile skips dispatch for deferred pods.
+func TestDeferredAdmissionSkippedByHandlePodReconcile(t *testing.T) {
+	tCtx := ktesting.Init(t)
+	testKubelet, h := newDeferredAdmissionKubelet(t)
+	defer testKubelet.Cleanup()
+	kl := testKubelet.kubelet
+	dispatched := recordDispatches(kl)
+
+	h.admit = false
+	h.deferResult = true
+	pod := newDeferTestPod("reconcile-skip-1")
+	kl.HandlePodAdditions(tCtx, []*v1.Pod{pod})
+	require.True(t, kl.IsPodAdmissionDeferred(pod.UID))
+
+	kl.HandlePodReconcile(tCtx, []*v1.Pod{pod})
+
+	require.NotContains(t, dispatched, pod.UID, "HandlePodReconcile must not dispatch a deferred pod")
+}
+
 // A non-deferrable rejection in HandlePodAdditions fails the pod immediately and
 // does not track it as deferred.
 func TestDeferredAdmissionNonDeferrableRejection(t *testing.T) {

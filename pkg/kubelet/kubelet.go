@@ -3177,6 +3177,14 @@ func (kl *Kubelet) HandlePodUpdates(ctx context.Context, pods []*v1.Pod) {
 			}
 		}
 
+		// A pod whose admission is deferred must not be dispatched to the pod
+		// workers. retryDeferredAdmissions will dispatch it once it is admitted
+		// (or reject it on timeout). We still update the pod manager above so
+		// that the latest spec is available when admission is retried.
+		if kl.IsPodAdmissionDeferred(pod.UID) {
+			logger.V(4).Info("Skipping update for pod with deferred admission", "pod", klog.KObj(pod))
+			continue
+		}
 		kl.podWorkers.UpdatePod(ctx, UpdatePodOptions{
 			Pod:        pod,
 			MirrorPod:  mirrorPod,
@@ -3373,6 +3381,13 @@ func (kl *Kubelet) HandlePodReconcile(ctx context.Context, pods []*v1.Pod) {
 		// be different than Sync, or if there is a better place for it. For instance, we have
 		// needsReconcile in kubelet/config, here, and in status_manager.
 		if status.NeedToReconcilePodReadiness(pod) {
+			// A pod whose admission is deferred must not be dispatched to the
+			// pod workers. retryDeferredAdmissions will dispatch it once it is
+			// admitted (or reject it on timeout).
+			if kl.IsPodAdmissionDeferred(pod.UID) {
+				logger.V(4).Info("Skipping reconcile for pod with deferred admission", "pod", klog.KObj(pod))
+				continue
+			}
 			kl.podWorkers.UpdatePod(ctx, UpdatePodOptions{
 				Pod:        pod,
 				MirrorPod:  mirrorPod,
