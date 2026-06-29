@@ -97,6 +97,7 @@ import (
 	"k8s.io/kubernetes/pkg/api/legacyscheme"
 	"k8s.io/kubernetes/pkg/capabilities"
 	"k8s.io/kubernetes/pkg/credentialprovider"
+	credentialproviderplugin "k8s.io/kubernetes/pkg/credentialprovider/plugin"
 	"k8s.io/kubernetes/pkg/features"
 	"k8s.io/kubernetes/pkg/kubelet"
 	kubeletconfiginternal "k8s.io/kubernetes/pkg/kubelet/apis/config"
@@ -582,6 +583,29 @@ func initConfigz(ctx context.Context, kc *kubeletconfiginternal.KubeletConfigura
 	return nil
 }
 
+// initCredentialProviderConfigz registers the kubelet's credential provider configuration
+// with the /configz endpoint.
+func initCredentialProviderConfigz(logger logr.Logger) error {
+	versioned, err := credentialproviderplugin.GetRedactedCredentialProviderConfig()
+	if err != nil {
+		logger.Error(err, "Failed to read credential provider config for configz")
+		return err
+	}
+	if versioned == nil {
+		return nil
+	}
+	cz, err := configz.New("credentialproviderconfig")
+	if err != nil {
+		logger.Error(err, "Failed to register credential provider configz")
+		return err
+	}
+	if err := cz.Set(versioned); err != nil {
+		logger.Error(err, "Failed to register credential provider config")
+		return err
+	}
+	return nil
+}
+
 // makeEventRecorder sets up kubeDeps.Recorder if it's nil. It's a no-op otherwise.
 func makeEventRecorder(ctx context.Context, kubeDeps *kubelet.Dependencies, nodeName types.NodeName) {
 	if kubeDeps.Recorder != nil {
@@ -940,6 +964,11 @@ func run(ctx context.Context, s *options.KubeletServer, kubeDeps *kubelet.Depend
 
 	if err := RunKubelet(ctx, s, kubeDeps); err != nil {
 		return err
+	}
+
+	// This runs after RunKubelet so that credential provider plugin registration has already cached it's config.
+	if err := initCredentialProviderConfigz(logger); err != nil {
+		logger.Error(err, "Failed to register credential provider configuration with configz")
 	}
 
 	if s.HealthzPort > 0 {

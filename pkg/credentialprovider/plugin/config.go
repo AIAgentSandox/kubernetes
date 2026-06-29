@@ -24,10 +24,12 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/apimachinery/pkg/util/validation"
 	"k8s.io/apimachinery/pkg/util/validation/field"
+	configv1 "k8s.io/kubelet/config/v1"
 	credentialproviderv1 "k8s.io/kubelet/pkg/apis/credentialprovider/v1"
 	"k8s.io/kubernetes/pkg/credentialprovider"
 	kubeletconfig "k8s.io/kubernetes/pkg/kubelet/apis/config"
@@ -39,6 +41,75 @@ var (
 		string(kubeletconfig.TokenServiceAccountTokenCacheType),
 	)
 )
+
+// redactedValue is the placeholder used to mask sensitive credential provider
+// configuration fields when the configuration is exposed via the kubelet's
+// /configz endpoint.
+const redactedValue = "<redacted>"
+
+var (
+	// cachedConfigMu guards cachedConfig.
+	cachedConfigMu sync.RWMutex
+	// cachedConfig holds the credential provider configuration that was consumed by
+	// the most recent successful RegisterCredentialProviderPlugins call.
+	cachedConfig *kubeletconfig.CredentialProviderConfig
+)
+
+// setCredentialProviderConfig records the configuration consumed by plugin
+// registration so it can later be served (redacted) via /configz.
+func setCredentialProviderConfig(config *kubeletconfig.CredentialProviderConfig) {
+	cachedConfigMu.Lock()
+	defer cachedConfigMu.Unlock()
+	cachedConfig = config
+}
+
+// getCredentialProviderConfig returns a deep copy of the cached configuration,
+// or nil if registration has not run.
+func getCredentialProviderConfig() *kubeletconfig.CredentialProviderConfig {
+	cachedConfigMu.RLock()
+	defer cachedConfigMu.RUnlock()
+	if cachedConfig == nil {
+		return nil
+	}
+	return cachedConfig.DeepCopy()
+}
+
+// GetRedactedCredentialProviderConfig returns the cached credential provider
+// configuration with sensitive fields redacted. Returns (nil, nil) if no
+// configuration has been registered.
+func GetRedactedCredentialProviderConfig() (*configv1.CredentialProviderConfig, error) {
+	config := getCredentialProviderConfig()
+	if config == nil {
+		return nil, nil
+	}
+	return redactCredentialProviderConfig(config)
+}
+
+// redactCredentialProviderConfig converts an internal CredentialProviderConfig to its
+// v1 versioned form with sensitive fields redacted, suitable for serving via /configz.
+// The caller must pass a config it owns (e.g. a DeepCopy) because the unsafe-pointer
+// conversion aliases slices between internal and versioned objects, and the in-place
+// redaction below will mutate through that alias.
+func redactCredentialProviderConfig(internalConfig *kubeletconfig.CredentialProviderConfig) (*configv1.CredentialProviderConfig, error) {
+	versioned := &configv1.CredentialProviderConfig{}
+	if err := scheme.Convert(internalConfig, versioned, nil); err != nil {
+		return nil, fmt.Errorf("unable to convert credential provider config to %s: %w", configv1.SchemeGroupVersion, err)
+	}
+
+	for i := range versioned.Providers {
+		for j := range versioned.Providers[i].Env {
+			if versioned.Providers[i].Env[j].Value != "" {
+				versioned.Providers[i].Env[j].Value = redactedValue
+			}
+		}
+		if len(versioned.Providers[i].Args) > 0 {
+			versioned.Providers[i].Args = []string{redactedValue}
+		}
+	}
+
+	versioned.SetGroupVersionKind(configv1.SchemeGroupVersion.WithKind("CredentialProviderConfig"))
+	return versioned, nil
+}
 
 // readCredentialProviderConfig receives a path to a config file or directory.
 // If the path is a directory, it reads all "*.json", "*.yaml" and "*.yml" files in lexicographic order,

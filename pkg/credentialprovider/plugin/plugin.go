@@ -189,6 +189,9 @@ func RegisterCredentialProviderPlugins(pluginConfigPath, pluginBinDir string,
 		registerCredentialProviderPlugin(provider.Name, plugin)
 	}
 
+	// Cache the configuration that is actually being registered.
+	setCredentialProviderConfig(credentialProviderConfig)
+
 	return nil
 }
 
