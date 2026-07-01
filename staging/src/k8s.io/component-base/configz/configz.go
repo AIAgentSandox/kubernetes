@@ -58,6 +58,7 @@ import (
 	"sync"
 
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/component-base/logs/datapol"
 )
 
 const DefaultConfigzPath = "/configz"
@@ -125,9 +126,17 @@ func (v *Config) Set(val runtime.Object) error {
 	return nil
 }
 
-// MarshalJSON marshals the ComponentConfig as JSON data.
+// MarshalJSON marshals the ComponentConfig as JSON data, redacting any field
+// tagged with `datapolicy` (e.g. credentials) so secrets are not served over
+// the "/configz" endpoint. It operates on a deep copy so the registered config
+// is left unmodified.
 func (v *Config) MarshalJSON() ([]byte, error) {
-	return json.Marshal(v.val)
+	if v.val == nil {
+		return json.Marshal(v.val)
+	}
+	redacted := v.val.DeepCopyObject()
+	datapol.Redact(redacted)
+	return json.Marshal(redacted)
 }
 
 func handle(w http.ResponseWriter, r *http.Request) {
