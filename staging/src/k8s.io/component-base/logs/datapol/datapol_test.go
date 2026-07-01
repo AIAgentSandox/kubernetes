@@ -272,3 +272,30 @@ func TestRedactNilAndNonPointer(t *testing.T) {
 	v := redactString{Token: marker}
 	Redact(v)
 }
+
+// redactCyclic is a self-referential type used to prove Redact does not recurse
+// forever on a cyclic object graph. A stack overflow would be a fatal error that
+// Redact's recover() cannot catch.
+type redactCyclic struct {
+	Token string `datapolicy:"token"`
+	Self  *redactCyclic
+	Peers map[string]*redactCyclic
+}
+
+func TestRedactCyclic(t *testing.T) {
+	// Pointer cycle: node references itself.
+	node := &redactCyclic{Token: marker}
+	node.Self = node
+	node.Peers = map[string]*redactCyclic{"self": node}
+
+	Redact(node)
+
+	if node.Token != redacted {
+		t.Errorf("Token not redacted on cyclic input: got %q", node.Token)
+	}
+	// The cycle must have been broken (no crash) and the same node reached
+	// through the cycle is the already-redacted node.
+	if node.Self.Token != redacted {
+		t.Errorf("Token not redacted through cycle: got %q", node.Self.Token)
+	}
+}

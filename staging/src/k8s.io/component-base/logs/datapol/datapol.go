@@ -51,18 +51,42 @@ func Redact(obj interface{}) {
 		}
 		v = v.Elem()
 	}
-	redactWalk(v)
+	redactWalk(v, map[uintptr]struct{}{})
+}
+
+// seen records the addresses of pointers and maps already visited during a walk
+// so that a cyclic object graph short-circuits instead of recursing forever.
+// Without this guard a self-referential input overflows the stack, which is a
+// fatal error that Redact's recover() cannot catch. Returns true if v was
+// already visited (and records it otherwise). Only pointer and map kinds carry a
+// meaningful identity via Pointer(); other kinds return false.
+func seen(v reflect.Value, visited map[uintptr]struct{}) bool {
+	switch v.Kind() {
+	case reflect.Pointer, reflect.Map:
+		if v.IsNil() {
+			return false
+		}
+		p := v.Pointer()
+		if _, ok := visited[p]; ok {
+			return true
+		}
+		visited[p] = struct{}{}
+	}
+	return false
 }
 
 // redactWalk traverses untagged values looking for struct fields carrying a
 // datapolicy tag. When it finds one it hands the field to redactValue.
-func redactWalk(v reflect.Value) {
+func redactWalk(v reflect.Value, visited map[uintptr]struct{}) {
+	if seen(v, visited) {
+		return
+	}
 	switch v.Kind() {
 	case reflect.Pointer:
 		if v.IsNil() {
 			return
 		}
-		redactWalk(v.Elem())
+		redactWalk(v.Elem(), visited)
 	case reflect.Interface:
 		if v.IsNil() {
 			return
@@ -74,7 +98,7 @@ func redactWalk(v reflect.Value) {
 		ev := v.Elem()
 		cp := reflect.New(ev.Type()).Elem()
 		cp.Set(ev)
-		redactWalk(cp)
+		redactWalk(cp, visited)
 		if v.CanSet() {
 			v.Set(cp)
 		}
@@ -87,14 +111,14 @@ func redactWalk(v reflect.Value) {
 				continue
 			}
 			if _, ok := t.Field(i).Tag.Lookup("datapolicy"); ok {
-				redactValue(fv)
+				redactValue(fv, visited)
 				continue
 			}
-			redactWalk(fv)
+			redactWalk(fv, visited)
 		}
 	case reflect.Slice, reflect.Array:
 		for i := 0; i < v.Len(); i++ {
-			redactWalk(v.Index(i))
+			redactWalk(v.Index(i), visited)
 		}
 	case reflect.Map:
 		iter := v.MapRange()
@@ -104,7 +128,7 @@ func redactWalk(v reflect.Value) {
 			mv := iter.Value()
 			cp := reflect.New(mv.Type()).Elem()
 			cp.Set(mv)
-			redactWalk(cp)
+			redactWalk(cp, visited)
 			v.SetMapIndex(iter.Key(), cp)
 		}
 	}
@@ -114,7 +138,10 @@ func redactWalk(v reflect.Value) {
 // byte slices, and string slices are replaced with the "CLASSIFIED" sentinel;
 // maps preserve their keys but have their leaf values redacted; pointers and
 // interfaces are dereferenced; any other scalar is zeroed.
-func redactValue(v reflect.Value) {
+func redactValue(v reflect.Value, visited map[uintptr]struct{}) {
+	if seen(v, visited) {
+		return
+	}
 	switch v.Kind() {
 	case reflect.String:
 		v.SetString(redacted)
@@ -124,7 +151,7 @@ func redactValue(v reflect.Value) {
 		if v.IsNil() {
 			return
 		}
-		redactValue(v.Elem())
+		redactValue(v.Elem(), visited)
 	case reflect.Interface:
 		if v.IsNil() {
 			return
@@ -132,7 +159,7 @@ func redactValue(v reflect.Value) {
 		ev := v.Elem()
 		cp := reflect.New(ev.Type()).Elem()
 		cp.Set(ev)
-		redactValue(cp)
+		redactValue(cp, visited)
 		v.Set(cp)
 	case reflect.Slice:
 		switch v.Type().Elem().Kind() {
@@ -146,12 +173,12 @@ func redactValue(v reflect.Value) {
 			v.Set(s)
 		default:
 			for i := 0; i < v.Len(); i++ {
-				redactValue(v.Index(i))
+				redactValue(v.Index(i), visited)
 			}
 		}
 	case reflect.Array:
 		for i := 0; i < v.Len(); i++ {
-			redactValue(v.Index(i))
+			redactValue(v.Index(i), visited)
 		}
 	case reflect.Map:
 		iter := v.MapRange()
@@ -159,7 +186,7 @@ func redactValue(v reflect.Value) {
 			mv := iter.Value()
 			cp := reflect.New(mv.Type()).Elem()
 			cp.Set(mv)
-			redactValue(cp)
+			redactValue(cp, visited)
 			v.SetMapIndex(iter.Key(), cp)
 		}
 	default:
