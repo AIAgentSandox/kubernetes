@@ -406,5 +406,43 @@ func ValidateKubeletConfiguration(kc *kubeletconfig.KubeletConfiguration, featur
 		}
 	}
 
+	if systemPartitionConfigured(kc.SystemPartition) {
+		allErrors = append(allErrors, validateSystemPartition(kc, localFeatureGate)...)
+	}
+
 	return utilerrors.NewAggregate(allErrors)
+}
+
+// systemPartitionConfigured reports whether the SystemPartition configuration
+// has any field set. resource.Quantity is not comparable with ==, so the fields
+// are inspected individually.
+func systemPartitionConfigured(sp kubeletconfig.SystemPartitionConfiguration) bool {
+	return !sp.MemoryLimit.IsZero() || sp.CPUSet != "" || len(sp.Namespaces) > 0
+}
+
+// validateSystemPartition validates the SystemPartition configuration. It is
+// only called when the configuration is non-zero.
+func validateSystemPartition(kc *kubeletconfig.KubeletConfiguration, featureGate featuregate.FeatureGate) []error {
+	var allErrors []error
+	sp := kc.SystemPartition
+
+	if !featureGate.Enabled(features.NodeSystemPartition) {
+		allErrors = append(allErrors, fmt.Errorf("invalid configuration: systemPartition requires feature gate NodeSystemPartition to be enabled"))
+	}
+	if sp.MemoryLimit.Sign() <= 0 {
+		allErrors = append(allErrors, fmt.Errorf("invalid configuration: systemPartition.memoryLimit %q must be a positive quantity", sp.MemoryLimit.String()))
+	}
+	if sp.CPUSet != "" {
+		if _, err := cpuset.Parse(sp.CPUSet); err != nil {
+			allErrors = append(allErrors, fmt.Errorf("invalid configuration: unable to parse systemPartition.cpuset %q, error: %w", sp.CPUSet, err))
+		}
+	}
+	if len(sp.Namespaces) == 0 {
+		allErrors = append(allErrors, fmt.Errorf("invalid configuration: systemPartition.namespaces must contain at least one namespace"))
+	}
+	if !kc.CgroupsPerQOS {
+		allErrors = append(allErrors, fmt.Errorf("invalid configuration: cgroupsPerQOS (--cgroups-per-qos) must be set to true when systemPartition is configured"))
+	}
+
+	return allErrors
 }

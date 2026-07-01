@@ -23,6 +23,7 @@ import (
 	"time"
 
 	v1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	logsapi "k8s.io/component-base/logs/api/v1"
@@ -797,6 +798,94 @@ func TestValidateKubeletConfiguration(t *testing.T) {
 				conf.ImageMinimumGCAge = metav1.Duration{Duration: 1 * time.Nanosecond}
 				return conf
 			},
+		}, {
+			name: "empty SystemPartition is valid",
+			configure: func(conf *kubeletconfig.KubeletConfiguration) *kubeletconfig.KubeletConfiguration {
+				// SystemPartition left at its zero value: no validation should run.
+				return conf
+			},
+		}, {
+			name: "valid SystemPartition configuration",
+			configure: func(conf *kubeletconfig.KubeletConfiguration) *kubeletconfig.KubeletConfiguration {
+				conf.FeatureGates["NodeSystemPartition"] = true
+				conf.SystemPartition = kubeletconfig.SystemPartitionConfiguration{
+					MemoryLimit: resource.MustParse("4Gi"),
+					CPUSet:      "0-3",
+					Namespaces:  []string{"kube-system"},
+				}
+				return conf
+			},
+		}, {
+			name: "SystemPartition set without NodeSystemPartition feature gate",
+			configure: func(conf *kubeletconfig.KubeletConfiguration) *kubeletconfig.KubeletConfiguration {
+				conf.SystemPartition = kubeletconfig.SystemPartitionConfiguration{
+					MemoryLimit: resource.MustParse("4Gi"),
+					CPUSet:      "0-3",
+					Namespaces:  []string{"kube-system"},
+				}
+				return conf
+			},
+			errMsg: "invalid configuration: systemPartition requires feature gate NodeSystemPartition to be enabled",
+		}, {
+			name: "SystemPartition missing namespaces",
+			configure: func(conf *kubeletconfig.KubeletConfiguration) *kubeletconfig.KubeletConfiguration {
+				conf.FeatureGates["NodeSystemPartition"] = true
+				conf.SystemPartition = kubeletconfig.SystemPartitionConfiguration{
+					MemoryLimit: resource.MustParse("4Gi"),
+					CPUSet:      "0-3",
+				}
+				return conf
+			},
+			errMsg: "invalid configuration: systemPartition.namespaces must contain at least one namespace",
+		}, {
+			name: "SystemPartition invalid cpuset",
+			configure: func(conf *kubeletconfig.KubeletConfiguration) *kubeletconfig.KubeletConfiguration {
+				conf.FeatureGates["NodeSystemPartition"] = true
+				conf.SystemPartition = kubeletconfig.SystemPartitionConfiguration{
+					MemoryLimit: resource.MustParse("4Gi"),
+					CPUSet:      "not-a-cpuset",
+					Namespaces:  []string{"kube-system"},
+				}
+				return conf
+			},
+			errMsg: "invalid configuration: unable to parse systemPartition.cpuset \"not-a-cpuset\"",
+		}, {
+			name: "SystemPartition negative memory limit",
+			configure: func(conf *kubeletconfig.KubeletConfiguration) *kubeletconfig.KubeletConfiguration {
+				conf.FeatureGates["NodeSystemPartition"] = true
+				conf.SystemPartition = kubeletconfig.SystemPartitionConfiguration{
+					MemoryLimit: resource.MustParse("-1"),
+					CPUSet:      "0-3",
+					Namespaces:  []string{"kube-system"},
+				}
+				return conf
+			},
+			errMsg: "invalid configuration: systemPartition.memoryLimit \"-1\" must be a positive quantity",
+		}, {
+			name: "SystemPartition zero memory limit",
+			configure: func(conf *kubeletconfig.KubeletConfiguration) *kubeletconfig.KubeletConfiguration {
+				conf.FeatureGates["NodeSystemPartition"] = true
+				conf.SystemPartition = kubeletconfig.SystemPartitionConfiguration{
+					CPUSet:     "0-3",
+					Namespaces: []string{"kube-system"},
+				}
+				return conf
+			},
+			errMsg: "invalid configuration: systemPartition.memoryLimit \"0\" must be a positive quantity",
+		}, {
+			name: "SystemPartition requires CgroupsPerQOS",
+			configure: func(conf *kubeletconfig.KubeletConfiguration) *kubeletconfig.KubeletConfiguration {
+				conf.FeatureGates["NodeSystemPartition"] = true
+				conf.CgroupsPerQOS = false
+				conf.EnforceNodeAllocatable = nil
+				conf.SystemPartition = kubeletconfig.SystemPartitionConfiguration{
+					MemoryLimit: resource.MustParse("4Gi"),
+					CPUSet:      "0-3",
+					Namespaces:  []string{"kube-system"},
+				}
+				return conf
+			},
+			errMsg: "invalid configuration: cgroupsPerQOS (--cgroups-per-qos) must be set to true when systemPartition is configured",
 		},
 	}
 

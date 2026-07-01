@@ -130,13 +130,13 @@ User Pods:        Capacity - kubeReserved - systemReserved - systemPartition.mem
 - Modify: `pkg/kubelet/apis/config/validation/validation.go`
 - Modify: `pkg/kubelet/apis/config/validation/validation_test.go`
 
-- [ ] Add `validateSystemPartition` function in `validation.go` — validates: feature gate enabled, MemoryLimit positive, CPUSet parses as valid `cpuset.CPUSet`, Namespaces non-empty, `CgroupsPerQOS` must be true
-- [ ] Call `validateSystemPartition` from `ValidateKubeletConfiguration` when `SystemPartition` is non-zero
-- [ ] Write unit tests: valid config with all fields set
-- [ ] Write unit tests: missing namespaces, invalid cpuset, negative memory limit, zero memory limit
-- [ ] Write unit tests: feature gate off with config present, CgroupsPerQOS=false with config present
-- [ ] Write unit tests: empty SystemPartition (no validation errors)
-- [ ] Run tests: `go test ./pkg/kubelet/apis/config/validation/...`
+- [x] Add `validateSystemPartition` function in `validation.go` — validates: feature gate enabled, MemoryLimit positive, CPUSet parses as valid `cpuset.CPUSet`, Namespaces non-empty, `CgroupsPerQOS` must be true
+- [x] Call `validateSystemPartition` from `ValidateKubeletConfiguration` when `SystemPartition` is non-zero
+- [x] Write unit tests: valid config with all fields set
+- [x] Write unit tests: missing namespaces, invalid cpuset, negative memory limit, zero memory limit
+- [x] Write unit tests: feature gate off with config present, CgroupsPerQOS=false with config present
+- [x] Write unit tests: empty SystemPartition (no validation errors)
+- [x] Run tests: `go test ./pkg/kubelet/apis/config/validation/...`
 
 ### Task 3: Create system partition cgroup hierarchy
 
