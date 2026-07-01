@@ -25,6 +25,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/klog/v2/ktesting"
 
 	v1 "k8s.io/api/core/v1"
@@ -292,6 +293,138 @@ func TestGetPodContainerName(t *testing.T) {
 			actualCgroupName, actualLiteralCgroupfs := pcm.GetPodContainerName(tt.args.pod)
 			require.Equalf(t, tt.wantCgroupName, actualCgroupName, "Unexpected cgroup name for pod with UID %s, container resources: %v", tt.args.pod.UID, tt.args.pod.Spec.Containers[0].Resources)
 			require.Equalf(t, tt.wantLiteralCgroupfs, actualLiteralCgroupfs, "Unexpected literal cgroupfs for pod with UID %s, container resources: %v", tt.args.pod.UID, tt.args.pod.Spec.Containers[0].Resources)
+		})
+	}
+}
+
+// TestGetPodContainerNameSystemPartition verifies that GetPodContainerName routes
+// pods to the system partition QoS hierarchy when the pod's namespace is in the
+// configured system namespaces, and to the default hierarchy otherwise.
+func TestGetPodContainerNameSystemPartition(t *testing.T) {
+	logger, _ := ktesting.NewTestContext(t)
+
+	newPod := func(uid types.UID, namespace string, qos v1.PodQOSClass) *v1.Pod {
+		var resources v1.ResourceRequirements
+		switch qos {
+		case v1.PodQOSGuaranteed:
+			resources = v1.ResourceRequirements{
+				Requests: v1.ResourceList{
+					v1.ResourceCPU:    resource.MustParse("1000m"),
+					v1.ResourceMemory: resource.MustParse("1G"),
+				},
+				Limits: v1.ResourceList{
+					v1.ResourceCPU:    resource.MustParse("1000m"),
+					v1.ResourceMemory: resource.MustParse("1G"),
+				},
+			}
+		case v1.PodQOSBurstable:
+			resources = v1.ResourceRequirements{
+				Requests: v1.ResourceList{
+					v1.ResourceCPU:    resource.MustParse("1000m"),
+					v1.ResourceMemory: resource.MustParse("1G"),
+				},
+			}
+		case v1.PodQOSBestEffort:
+			// no requests or limits
+		}
+		return &v1.Pod{
+			ObjectMeta: metav1.ObjectMeta{
+				UID:       uid,
+				Namespace: namespace,
+			},
+			Spec: v1.PodSpec{
+				Containers: []v1.Container{
+					{
+						Name:      "container",
+						Resources: resources,
+					},
+				},
+			},
+		}
+	}
+
+	// default partition QoS containers (kubepods/...)
+	defaultQOS := QOSContainersInfo{
+		Guaranteed: RootCgroupName,
+		Burstable:  NewCgroupName(RootCgroupName, strings.ToLower(string(v1.PodQOSBurstable))),
+		BestEffort: NewCgroupName(RootCgroupName, strings.ToLower(string(v1.PodQOSBestEffort))),
+	}
+	// system partition QoS containers (kubepods/system/...)
+	systemRoot := NewCgroupName(RootCgroupName, "system")
+	systemQOS := QOSContainersInfo{
+		Guaranteed: systemRoot,
+		Burstable:  NewCgroupName(systemRoot, strings.ToLower(string(v1.PodQOSBurstable))),
+		BestEffort: NewCgroupName(systemRoot, strings.ToLower(string(v1.PodQOSBestEffort))),
+	}
+
+	tests := []struct {
+		name             string
+		systemNamespaces sets.Set[string]
+		pod              *v1.Pod
+		wantParent       CgroupName
+	}{
+		{
+			name:             "system namespace + guaranteed -> system guaranteed",
+			systemNamespaces: sets.New("kube-system"),
+			pod:              newPod("uid-1", "kube-system", v1.PodQOSGuaranteed),
+			wantParent:       systemQOS.Guaranteed,
+		},
+		{
+			name:             "system namespace + burstable -> system burstable",
+			systemNamespaces: sets.New("kube-system"),
+			pod:              newPod("uid-2", "kube-system", v1.PodQOSBurstable),
+			wantParent:       systemQOS.Burstable,
+		},
+		{
+			name:             "system namespace + besteffort -> system besteffort",
+			systemNamespaces: sets.New("kube-system"),
+			pod:              newPod("uid-3", "kube-system", v1.PodQOSBestEffort),
+			wantParent:       systemQOS.BestEffort,
+		},
+		{
+			name:             "non-system namespace + guaranteed -> default guaranteed",
+			systemNamespaces: sets.New("kube-system"),
+			pod:              newPod("uid-4", "default", v1.PodQOSGuaranteed),
+			wantParent:       defaultQOS.Guaranteed,
+		},
+		{
+			name:             "non-system namespace + burstable -> default burstable",
+			systemNamespaces: sets.New("kube-system"),
+			pod:              newPod("uid-5", "default", v1.PodQOSBurstable),
+			wantParent:       defaultQOS.Burstable,
+		},
+		{
+			name:             "non-system namespace + besteffort -> default besteffort",
+			systemNamespaces: sets.New("kube-system"),
+			pod:              newPod("uid-6", "default", v1.PodQOSBestEffort),
+			wantParent:       defaultQOS.BestEffort,
+		},
+		{
+			name:             "feature off (empty system namespaces) + kube-system pod -> default",
+			systemNamespaces: nil,
+			pod:              newPod("uid-7", "kube-system", v1.PodQOSGuaranteed),
+			wantParent:       defaultQOS.Guaranteed,
+		},
+		{
+			name:             "feature off (empty system namespaces) + burstable -> default",
+			systemNamespaces: nil,
+			pod:              newPod("uid-8", "kube-system", v1.PodQOSBurstable),
+			wantParent:       defaultQOS.Burstable,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			pcm := &podContainerManagerImpl{
+				cgroupManager:           NewCgroupManager(logger, nil, "cgroupfs"),
+				qosContainersInfo:       defaultQOS,
+				systemQOSContainersInfo: systemQOS,
+				systemNamespaces:        tt.systemNamespaces,
+			}
+			wantCgroupName := NewCgroupName(tt.wantParent, GetPodCgroupNameSuffix(tt.pod.UID))
+			actualCgroupName, actualLiteralCgroupfs := pcm.GetPodContainerName(tt.pod)
+			require.Equal(t, wantCgroupName, actualCgroupName, "Unexpected cgroup name")
+			require.Equal(t, wantCgroupName.ToCgroupfs(), actualLiteralCgroupfs, "Unexpected literal cgroupfs")
 		})
 	}
 }

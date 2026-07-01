@@ -173,14 +173,14 @@ User Pods:        Capacity - kubeReserved - systemReserved - systemPartition.mem
 **Files:**
 - Modify: `pkg/kubelet/cm/pod_container_manager_linux.go`
 
-- [ ] Add `systemQOSContainersInfo QOSContainersInfo` and `systemNamespaces sets.Set[string]` fields to `podContainerManagerImpl`
-- [ ] Wire these fields from container manager during construction
-- [ ] Modify `GetPodContainerName`: check `m.systemNamespaces.Has(pod.Namespace)`, select `systemQOSContainersInfo` or default `qosContainersInfo` before the QoS switch
-- [ ] Write unit tests: pod in system namespace + Guaranteed QoS -> system partition guaranteed path
-- [ ] Write unit tests: pod in system namespace + Burstable/BestEffort -> system partition burstable/besteffort paths
-- [ ] Write unit tests: pod NOT in system namespace -> default partition paths (all 3 QoS classes)
-- [ ] Write unit tests: feature off (systemNamespaces empty) -> always default paths
-- [ ] Run tests: `go test ./pkg/kubelet/cm/...`
+- [x] Add `systemQOSContainersInfo QOSContainersInfo` and `systemNamespaces sets.Set[string]` fields to `podContainerManagerImpl`
+- [x] Wire these fields from container manager during construction
+- [x] Modify `GetPodContainerName`: check `m.systemNamespaces.Has(pod.Namespace)`, select `systemQOSContainersInfo` or default `qosContainersInfo` before the QoS switch
+- [x] Write unit tests: pod in system namespace + Guaranteed QoS -> system partition guaranteed path
+- [x] Write unit tests: pod in system namespace + Burstable/BestEffort -> system partition burstable/besteffort paths
+- [x] Write unit tests: pod NOT in system namespace -> default partition paths (all 3 QoS classes)
+- [x] Write unit tests: feature off (systemNamespaces empty) -> always default paths
+- [x] Run tests: `go test ./pkg/kubelet/cm/...`
 
 ### Task 6: Add cgroup reconciliation for system partition
 

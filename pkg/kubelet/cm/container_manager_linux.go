@@ -469,6 +469,8 @@ func (cm *containerManagerImpl) NewPodContainerManager() PodContainerManager {
 			podContainerManager:       cm,
 			memoryReservationPolicy:   cm.MemoryReservationPolicy,
 			systemPartitionCgroupName: cm.systemPartitionCgroupName,
+			systemQOSContainersInfo:   cm.qosContainerManager.GetSystemQOSContainersInfo(),
+			systemNamespaces:          sets.New(cm.SystemPartition.Namespaces...),
 		}
 	}
 	return &podContainerManagerNoop{

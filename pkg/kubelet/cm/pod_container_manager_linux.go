@@ -27,6 +27,7 @@ import (
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
+	"k8s.io/apimachinery/pkg/util/sets"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/klog/v2"
 	v1qos "k8s.io/kubernetes/pkg/apis/core/v1/helper/qos"
@@ -64,6 +65,13 @@ type podContainerManagerImpl struct {
 	// cgroup. It is empty (nil) unless the NodeSystemPartition feature is enabled
 	// and a system partition is configured.
 	systemPartitionCgroupName CgroupName
+	// systemQOSContainersInfo holds absolute paths of the top level qos containers
+	// under the system partition (kubepods/system). It is only populated when a
+	// system partition is configured.
+	systemQOSContainersInfo QOSContainersInfo
+	// systemNamespaces is the set of namespaces whose pods are placed under the
+	// system partition. It is empty unless a system partition is configured.
+	systemNamespaces sets.Set[string]
 }
 
 // Make sure that podContainerManagerImpl implements the PodContainerManager interface
@@ -115,15 +123,22 @@ func (m *podContainerManagerImpl) EnsureExists(logger klog.Logger, pod *v1.Pod) 
 // GetPodContainerName returns the CgroupName identifier, and its literal cgroupfs form on the host.
 func (m *podContainerManagerImpl) GetPodContainerName(pod *v1.Pod) (CgroupName, string) {
 	podQOS := v1qos.GetPodQOS(pod)
+	// Select the QoS container set for the partition this pod belongs to. Pods in
+	// a configured system namespace are placed under the system partition
+	// (kubepods/system); all other pods use the default partition.
+	qosContainersInfo := m.qosContainersInfo
+	if m.systemNamespaces.Has(pod.Namespace) {
+		qosContainersInfo = m.systemQOSContainersInfo
+	}
 	// Get the parent QOS container name
 	var parentContainer CgroupName
 	switch podQOS {
 	case v1.PodQOSGuaranteed:
-		parentContainer = m.qosContainersInfo.Guaranteed
+		parentContainer = qosContainersInfo.Guaranteed
 	case v1.PodQOSBurstable:
-		parentContainer = m.qosContainersInfo.Burstable
+		parentContainer = qosContainersInfo.Burstable
 	case v1.PodQOSBestEffort:
-		parentContainer = m.qosContainersInfo.BestEffort
+		parentContainer = qosContainersInfo.BestEffort
 	}
 	podContainer := GetPodCgroupNameSuffix(pod.UID)
 
