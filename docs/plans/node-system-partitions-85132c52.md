@@ -4,7 +4,7 @@
 
 ### Task 1: node system partitions
 
-- [ ] # KEP-5894: Node System Partition
+- [x] # KEP-5894: Node System Partition
 
 ## Overview
 - Introduce a dedicated `kubepods/system/` cgroup sub-hierarchy for system pods (e.g., kube-system workloads), isolating them from user workloads with dedicated memory limits and CPU sets
