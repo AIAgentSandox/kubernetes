@@ -106,6 +106,16 @@ type managerImpl struct {
 	thresholdsLastUpdated time.Time
 	// whether can support local storage capacity isolation
 	localStorageCapacityIsolation bool
+	// systemPartition holds the configuration for the node system partition. It
+	// is nil unless the NodeSystemPartition feature is enabled and a system
+	// partition is configured.
+	systemPartition *SystemPartitionConfig
+	// partitionMemoryReader reads the current memory usage of a partition cgroup.
+	// It is overridable in tests.
+	partitionMemoryReader partitionMemoryReader
+	// partitionMemoryPressure records whether the system partition memory
+	// eviction threshold is currently met, as observed by the monitoring loop.
+	partitionMemoryPressure bool
 }
 
 // ensure it implements the required interface
@@ -138,6 +148,8 @@ func NewManager(
 		splitContainerImageFs:         nil,
 		thresholdNotifiers:            []ThresholdNotifier{},
 		localStorageCapacityIsolation: localStorageCapacityIsolation,
+		systemPartition:               config.SystemPartition,
+		partitionMemoryReader:         readPartitionMemoryUsage,
 	}
 	return manager, manager
 }
@@ -251,10 +263,62 @@ func (m *managerImpl) IsUnderPIDPressure() bool {
 	return hasNodeCondition(m.nodeConditions, v1.NodePIDPressure)
 }
 
+// IsUnderPartitionMemoryPressure returns true if the node system partition is
+// under memory pressure, as observed by the most recent monitoring cycle.
+func (m *managerImpl) IsUnderPartitionMemoryPressure() bool {
+	m.RLock()
+	defer m.RUnlock()
+	return m.partitionMemoryPressure
+}
+
+// synchronizePartitionMemory monitors the node system partition. When a system
+// partition is configured it reads the partition's current memory usage, emits
+// the partition memory usage and limit metrics, and records whether the
+// partition memory eviction threshold is currently met. The recorded signal is
+// consumed by partition-scoped eviction targeting.
+func (m *managerImpl) synchronizePartitionMemory(logger klog.Logger) {
+	if m.systemPartition == nil || m.systemPartition.MemoryLimit == nil {
+		return
+	}
+
+	// Always publish the configured limit so consumers can observe the partition
+	// even before the first usage reading succeeds.
+	memoryLimit := m.systemPartition.MemoryLimit
+	metrics.PartitionMemoryLimit.WithLabelValues(systemPartitionName).Set(float64(memoryLimit.Value()))
+
+	usage, err := m.partitionMemoryReader(m.systemPartition.CgroupPath)
+	if err != nil {
+		logger.V(3).Info("Eviction manager: failed to read system partition memory usage", "cgroupPath", m.systemPartition.CgroupPath, "err", err)
+		return
+	}
+	metrics.PartitionMemoryUsage.WithLabelValues(systemPartitionName).Set(float64(usage))
+
+	threshold, found := memoryAvailableHardThreshold(m.config.Thresholds)
+	pressure := false
+	if found {
+		pressure = partitionMemoryThresholdMet(threshold.Value, memoryLimit, usage)
+	}
+	if pressure {
+		available := partitionMemoryAvailable(memoryLimit, usage)
+		logger.Info("Eviction manager: system partition is under memory pressure", "memoryLimit", memoryLimit.String(), "usage", usage, "available", available.String())
+	}
+
+	m.Lock()
+	m.partitionMemoryPressure = pressure
+	m.Unlock()
+}
+
 // synchronize is the main control loop that enforces eviction thresholds.
 // Returns the pod that was killed, or nil if no pod was killed.
 func (m *managerImpl) synchronize(ctx context.Context, diskInfoProvider DiskInfoProvider, podFunc ActivePodsFunc) ([]*v1.Pod, error) {
 	logger := klog.FromContext(ctx)
+
+	// Monitor the node system partition independently of the node-level
+	// thresholds. This reads the partition's current memory usage, emits the
+	// partition memory metrics, and records whether the partition memory
+	// eviction threshold is met for later use by partition-scoped eviction.
+	m.synchronizePartitionMemory(logger)
+
 	// if we have nothing to do, just return
 	thresholds := m.config.Thresholds
 	if len(thresholds) == 0 && !m.localStorageCapacityIsolation {

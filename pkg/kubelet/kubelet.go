@@ -543,6 +543,14 @@ func NewMainKubelet(ctx context.Context,
 		KernelMemcgNotification:  kernelMemcgNotification,
 		PodCgroupRoot:            kubeDeps.ContainerManager.GetPodCgroupRoot(),
 	}
+	if utilfeature.DefaultFeatureGate.Enabled(features.NodeSystemPartition) && len(kubeCfg.SystemPartition.Namespaces) > 0 {
+		memoryLimit := kubeCfg.SystemPartition.MemoryLimit
+		evictionConfig.SystemPartition = &eviction.SystemPartitionConfig{
+			MemoryLimit: &memoryLimit,
+			CgroupPath:  kubeDeps.ContainerManager.GetPodCgroupRoot() + "/system",
+			Namespaces:  sets.New(kubeCfg.SystemPartition.Namespaces...),
+		}
+	}
 
 	var serviceLister corelisters.ServiceLister
 	var serviceHasSynced cache.InformerSynced

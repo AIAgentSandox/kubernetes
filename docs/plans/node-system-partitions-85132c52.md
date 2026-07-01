@@ -209,13 +209,13 @@ User Pods:        Capacity - kubeReserved - systemReserved - systemPartition.mem
 - Modify: `pkg/kubelet/eviction/eviction_manager.go`
 - Modify: `pkg/kubelet/eviction/helpers.go`
 
-- [ ] Add system partition config (memoryLimit, cgroup path, namespaces) to `managerImpl` fields
-- [ ] Add helper function to read `memory.current` from a given cgroup path
-- [ ] In `synchronize`: when system partition configured, read system partition memory usage, compute `available = memoryLimit - current`, check against `evictionHard.memory.available` threshold (percentage relative to memoryLimit or absolute value)
-- [ ] Emit `kubelet_partition_memory_usage_bytes` and `kubelet_partition_memory_limit_bytes` metrics from monitoring loop
-- [ ] Write unit tests: partition memory signal computation (usage below threshold, at threshold, above threshold)
-- [ ] Write unit tests: threshold interpretation (percentage of memoryLimit, absolute value)
-- [ ] Run tests: `go test ./pkg/kubelet/eviction/...`
+- [x] Add system partition config (memoryLimit, cgroup path, namespaces) to `managerImpl` fields
+- [x] Add helper function to read `memory.current` from a given cgroup path
+- [x] In `synchronize`: when system partition configured, read system partition memory usage, compute `available = memoryLimit - current`, check against `evictionHard.memory.available` threshold (percentage relative to memoryLimit or absolute value)
+- [x] Emit `kubelet_partition_memory_usage_bytes` and `kubelet_partition_memory_limit_bytes` metrics from monitoring loop
+- [x] Write unit tests: partition memory signal computation (usage below threshold, at threshold, above threshold)
+- [x] Write unit tests: threshold interpretation (percentage of memoryLimit, absolute value)
+- [x] Run tests: `go test ./pkg/kubelet/eviction/...`
 
 ### Task 9: Add partition-scoped eviction targeting
 
