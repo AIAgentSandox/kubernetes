@@ -204,6 +204,14 @@ func aliasedSharedMap() *redactSharedMap {
 	return &redactSharedMap{Public: shared, Secret: shared}
 }
 
+// aliasedSliceMap returns a map whose values all alias the same backing slice,
+// so redaction must replace each value independently rather than skipping
+// already-seen slice headers.
+func aliasedSliceMap() map[string][]string {
+	vals := []string{"Bearer secret"}
+	return map[string][]string{"A": vals, "B": vals}
+}
+
 func TestRedact(t *testing.T) {
 	testcases := []struct {
 		name   string
@@ -279,6 +287,15 @@ func TestRedact(t *testing.T) {
 		name:   "map aliased by an untagged field walked before the tagged field is still redacted",
 		value:  aliasedSharedMap(),
 		expect: &redactSharedMap{Public: map[string][]string{"Authorization": {redacted}}, Secret: map[string][]string{"Authorization": {redacted}}},
+	}, {
+		// Regression: two map values in a tagged map alias the same []string.
+		// Terminal slice redaction replaces the slice header rather than
+		// mutating the shared backing array, so it must not be short-circuited
+		// by the seen() cycle guard — otherwise the second aliased value keeps
+		// its original secret (fail-open leak).
+		name:   "tagged map whose values alias the same string slice redacts every value",
+		value:  &redactHeader{StaticPodURLHeader: aliasedSliceMap()},
+		expect: &redactHeader{StaticPodURLHeader: map[string][]string{"A": {redacted}, "B": {redacted}}},
 	}}
 	for _, tc := range testcases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -322,5 +339,52 @@ func TestRedactCyclic(t *testing.T) {
 	// through the cycle is the already-redacted node.
 	if node.Self.Token != redacted {
 		t.Errorf("Token not redacted through cycle: got %q", node.Self.Token)
+	}
+}
+
+// TestRedactCyclicSlice proves a slice that references itself through an
+// interface element does not recurse forever. Slices carry identity via their
+// backing-array address; without recording that identity the walk would follow
+// the slice/interface path until a fatal stack overflow that recover() cannot
+// catch.
+func TestRedactCyclicSlice(t *testing.T) {
+	// Self-referential slice: element 0 holds the slice itself.
+	s := make([]interface{}, 1)
+	s[0] = s
+
+	// Wrap in a struct so Redact receives an addressable pointer, mirroring how
+	// configz hands it a deep-copied runtime object.
+	holder := &struct {
+		Data []interface{}
+	}{Data: s}
+
+	// Must return (break the cycle) rather than crash.
+	Redact(holder)
+}
+
+// TestRedactAliasedSubslice proves that two slices sharing a backing array but
+// spanning different ranges are both fully walked, so a tagged field only
+// reachable through the longer slice is still redacted. Keying the visited set
+// on the backing-array address alone (without length) would skip the longer
+// slice as "already seen" and leak the tagged field.
+func TestRedactAliasedSubslice(t *testing.T) {
+	type tagged struct {
+		Token string `datapolicy:"token"`
+	}
+	backing := []tagged{{Token: marker}, {Token: marker}}
+	holder := &struct {
+		Short []tagged
+		Full  []tagged
+	}{
+		Short: backing[:1],
+		Full:  backing,
+	}
+
+	Redact(holder)
+
+	for i := range backing {
+		if backing[i].Token != redacted {
+			t.Errorf("Token[%d] not redacted through aliased subslice: got %q", i, backing[i].Token)
+		}
 	}
 }

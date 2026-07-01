@@ -51,33 +51,55 @@ func Redact(obj interface{}) {
 		}
 		v = v.Elem()
 	}
-	redactWalk(v, map[uintptr]struct{}{})
+	redactWalk(v, map[visitKey]struct{}{})
 }
 
-// seen records the addresses of pointers and maps already visited during a walk
-// so that a cyclic object graph short-circuits instead of recursing forever.
-// Without this guard a self-referential input overflows the stack, which is a
-// fatal error that Redact's recover() cannot catch. Returns true if v was
-// already visited (and records it otherwise). Only pointer and map kinds carry a
+// visitKey identifies a value already visited during a walk. ptr is the value's
+// address via reflect.Value.Pointer(); length disambiguates slices that share a
+// backing array but span different ranges (e.g. s and s[:1]) so that aliased
+// sub-slices are still fully walked while a genuine self-referential slice is
+// still caught. For pointers and maps length is always 0.
+type visitKey struct {
+	ptr    uintptr
+	length int
+}
+
+// seen records the identity of pointers, maps, and slices already visited during
+// a walk so that a cyclic object graph short-circuits instead of recursing
+// forever. Without this guard a self-referential input (including a slice that
+// contains itself through an interface) overflows the stack, which is a fatal
+// error that Redact's recover() cannot catch. Returns true if v was already
+// visited (and records it otherwise). Only pointer, map, and slice kinds carry a
 // meaningful identity via Pointer(); other kinds return false.
-func seen(v reflect.Value, visited map[uintptr]struct{}) bool {
+func seen(v reflect.Value, visited map[visitKey]struct{}) bool {
+	var key visitKey
 	switch v.Kind() {
 	case reflect.Pointer, reflect.Map:
 		if v.IsNil() {
 			return false
 		}
-		p := v.Pointer()
-		if _, ok := visited[p]; ok {
-			return true
+		key = visitKey{ptr: v.Pointer()}
+	case reflect.Slice:
+		if v.IsNil() {
+			return false
 		}
-		visited[p] = struct{}{}
+		// A slice's identity is its backing-array address plus its length: a
+		// self-referential slice repeats both, while a distinct sub-slice of a
+		// shared backing array differs in length and must still be walked.
+		key = visitKey{ptr: v.Pointer(), length: v.Len()}
+	default:
+		return false
 	}
+	if _, ok := visited[key]; ok {
+		return true
+	}
+	visited[key] = struct{}{}
 	return false
 }
 
 // redactWalk traverses untagged values looking for struct fields carrying a
 // datapolicy tag. When it finds one it hands the field to redactValue.
-func redactWalk(v reflect.Value, visited map[uintptr]struct{}) {
+func redactWalk(v reflect.Value, visited map[visitKey]struct{}) {
 	if seen(v, visited) {
 		return
 	}
@@ -120,7 +142,7 @@ func redactWalk(v reflect.Value, visited map[uintptr]struct{}) {
 				// on struct field order. redactValue never re-enters redactWalk
 				// and zeroes structs instead of recursing into them, so its own
 				// cycle detection is self-contained within the fresh set.
-				redactValue(fv, map[uintptr]struct{}{})
+				redactValue(fv, map[visitKey]struct{}{})
 				continue
 			}
 			redactWalk(fv, visited)
@@ -147,10 +169,7 @@ func redactWalk(v reflect.Value, visited map[uintptr]struct{}) {
 // byte slices, and string slices are replaced with the "CLASSIFIED" sentinel;
 // maps preserve their keys but have their leaf values redacted; pointers and
 // interfaces are dereferenced; any other scalar is zeroed.
-func redactValue(v reflect.Value, visited map[uintptr]struct{}) {
-	if seen(v, visited) {
-		return
-	}
+func redactValue(v reflect.Value, visited map[visitKey]struct{}) {
 	switch v.Kind() {
 	case reflect.String:
 		v.SetString(redacted)
@@ -158,6 +177,12 @@ func redactValue(v reflect.Value, visited map[uintptr]struct{}) {
 		// A nil pointer holds no value to redact; leave it nil rather than
 		// materializing an empty object that was not present in the input.
 		if v.IsNil() {
+			return
+		}
+		// Cycle guard: a pointer that (transitively) points back to itself must
+		// not recurse forever. Redaction of the pointee mutates shared storage
+		// in place, so skipping an already-visited pointer loses nothing.
+		if seen(v, visited) {
 			return
 		}
 		redactValue(v.Elem(), visited)
@@ -173,14 +198,26 @@ func redactValue(v reflect.Value, visited map[uintptr]struct{}) {
 	case reflect.Slice:
 		switch v.Type().Elem().Kind() {
 		case reflect.Uint8:
-			// []byte
+			// []byte — terminal replacement. This overwrites the slice header
+			// rather than mutating the shared backing array, so it must NOT be
+			// short-circuited by the seen() cycle guard: two tagged fields (or
+			// two map values) that alias the same slice each need their own
+			// replacement, otherwise the second alias leaks its original value.
 			v.SetBytes([]byte(redacted))
 		case reflect.String:
-			// []string (or a named type with string elements)
+			// []string (or a named type with string elements) — terminal
+			// replacement; same rationale as []byte above, so no seen() guard.
 			s := reflect.MakeSlice(v.Type(), 1, 1)
 			s.Index(0).SetString(redacted)
 			v.Set(s)
 		default:
+			// Recursive slice: redaction mutates each element in place through
+			// the shared backing array, so a cycle guard is both safe (aliases
+			// already share the mutation) and necessary (a self-referential
+			// slice would otherwise recurse forever).
+			if seen(v, visited) {
+				return
+			}
 			for i := 0; i < v.Len(); i++ {
 				redactValue(v.Index(i), visited)
 			}
@@ -190,6 +227,12 @@ func redactValue(v reflect.Value, visited map[uintptr]struct{}) {
 			redactValue(v.Index(i), visited)
 		}
 	case reflect.Map:
+		// Cycle guard: a map reachable from its own values must not recurse
+		// forever. Values are rewritten via SetMapIndex on the shared map, so
+		// skipping an already-visited map loses nothing.
+		if seen(v, visited) {
+			return
+		}
 		iter := v.MapRange()
 		for iter.Next() {
 			mv := iter.Value()
