@@ -82,13 +82,13 @@
 **Files:**
 - Modify: `staging/src/k8s.io/component-base/logs/datapol/datapol_test.go`
 
-- [ ] test redaction of string field with datapolicy tag
-- [ ] test redaction of map[string][]string field (StaticPodURLHeader shape)
-- [ ] test that untagged fields are NOT redacted
-- [ ] test nested struct with tagged fields
-- [ ] test empty/zero-value fields (should still be redacted if tagged — the field exists, just empty)
-- [ ] test struct with no datapolicy tags (no-op)
-- [ ] run tests: `go test ./staging/src/k8s.io/component-base/logs/datapol/ -run TestRedact -v`
+- [x] test redaction of string field with datapolicy tag
+- [x] test redaction of map[string][]string field (StaticPodURLHeader shape)
+- [x] test that untagged fields are NOT redacted
+- [x] test nested struct with tagged fields
+- [x] test empty/zero-value fields (should still be redacted if tagged — the field exists, just empty)
+- [x] test struct with no datapolicy tags (no-op)
+- [x] run tests: `go test ./staging/src/k8s.io/component-base/logs/datapol/ -run TestRedact -v`
 
 ### Task 3: Wire Redact into configz serialization
 

@@ -150,3 +150,117 @@ func TestValidate(t *testing.T) {
 		}
 	}
 }
+
+// The following types use exported fields because Redact mutates via
+// reflection, which can only set exported fields.
+
+type redactString struct {
+	Token  string `datapolicy:"token"`
+	Public string
+}
+
+// redactHeader mirrors the StaticPodURLHeader shape (map[string][]string) that
+// leaked credentials in kubernetes/kubernetes#140101.
+type redactHeader struct {
+	StaticPodURLHeader map[string][]string `datapolicy:"token"`
+	PublicMap          map[string][]string
+}
+
+type redactBytes struct {
+	Secret []byte `datapolicy:"secret-key"`
+}
+
+type redactStringSlice struct {
+	Secrets []string `datapolicy:"password"`
+}
+
+type redactNested struct {
+	Inner  redactString
+	Public string
+}
+
+type redactPointer struct {
+	Inner *redactString
+}
+
+type redactNoTags struct {
+	A string
+	B int
+	C map[string]string
+}
+
+func TestRedact(t *testing.T) {
+	testcases := []struct {
+		name   string
+		value  interface{}
+		expect interface{}
+	}{{
+		name:   "string field with datapolicy tag is redacted, untagged field preserved",
+		value:  &redactString{Token: marker, Public: "visible"},
+		expect: &redactString{Token: redacted, Public: "visible"},
+	}, {
+		name:   "empty tagged string is still redacted",
+		value:  &redactString{Token: "", Public: "visible"},
+		expect: &redactString{Token: redacted, Public: "visible"},
+	}, {
+		name: "map[string][]string tagged field preserves keys, redacts values",
+		value: &redactHeader{
+			StaticPodURLHeader: map[string][]string{
+				"Authorization": {"Bearer hunter2"},
+				"X-Custom":      {"a", "b"},
+			},
+			PublicMap: map[string][]string{
+				"Accept": {"application/json"},
+			},
+		},
+		expect: &redactHeader{
+			StaticPodURLHeader: map[string][]string{
+				"Authorization": {redacted},
+				"X-Custom":      {redacted},
+			},
+			PublicMap: map[string][]string{
+				"Accept": {"application/json"},
+			},
+		},
+	}, {
+		name:   "byte slice tagged field is redacted",
+		value:  &redactBytes{Secret: []byte(marker)},
+		expect: &redactBytes{Secret: []byte(redacted)},
+	}, {
+		name:   "string slice tagged field is redacted to single sentinel",
+		value:  &redactStringSlice{Secrets: []string{marker, "another"}},
+		expect: &redactStringSlice{Secrets: []string{redacted}},
+	}, {
+		name:   "nested struct with tagged field is redacted, siblings preserved",
+		value:  &redactNested{Inner: redactString{Token: marker, Public: "keep"}, Public: "top"},
+		expect: &redactNested{Inner: redactString{Token: redacted, Public: "keep"}, Public: "top"},
+	}, {
+		name:   "tagged field behind pointer is redacted",
+		value:  &redactPointer{Inner: &redactString{Token: marker, Public: "keep"}},
+		expect: &redactPointer{Inner: &redactString{Token: redacted, Public: "keep"}},
+	}, {
+		name:   "nil pointer field is left untouched",
+		value:  &redactPointer{Inner: nil},
+		expect: &redactPointer{Inner: nil},
+	}, {
+		name:   "struct with no datapolicy tags is a no-op",
+		value:  &redactNoTags{A: "a", B: 1, C: map[string]string{"k": "v"}},
+		expect: &redactNoTags{A: "a", B: 1, C: map[string]string{"k": "v"}},
+	}}
+	for _, tc := range testcases {
+		t.Run(tc.name, func(t *testing.T) {
+			Redact(tc.value)
+			assert.Equal(t, tc.expect, tc.value)
+		})
+	}
+}
+
+// TestRedactNilAndNonPointer verifies Redact does not panic on inputs it cannot
+// mutate.
+func TestRedactNilAndNonPointer(t *testing.T) {
+	// nil interface
+	Redact(nil)
+	// non-pointer struct cannot be mutated but must not panic
+	v := redactString{Token: marker}
+	Redact(v)
+}
