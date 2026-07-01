@@ -17,7 +17,9 @@ limitations under the License.
 package eviction
 
 import (
+	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
+	"k8s.io/apimachinery/pkg/util/sets"
 	evictionapi "k8s.io/kubernetes/pkg/kubelet/eviction/api"
 )
 
@@ -49,6 +51,23 @@ func partitionMemoryThresholdMet(threshold evictionapi.ThresholdValue, memoryLim
 	available := partitionMemoryAvailable(memoryLimit, usage)
 	thresholdQuantity := evictionapi.GetThresholdQuantity(threshold, memoryLimit)
 	return available.Cmp(*thresholdQuantity) < 0
+}
+
+// filterPodsByNamespaces returns the subset of pods whose namespace belongs to
+// the provided set. It is used to restrict system-partition eviction candidates
+// to pods that actually run in the partition. An empty namespace set yields no
+// pods.
+func filterPodsByNamespaces(pods []*v1.Pod, namespaces sets.Set[string]) []*v1.Pod {
+	if namespaces.Len() == 0 {
+		return nil
+	}
+	filtered := make([]*v1.Pod, 0, len(pods))
+	for _, pod := range pods {
+		if namespaces.Has(pod.Namespace) {
+			filtered = append(filtered, pod)
+		}
+	}
+	return filtered
 }
 
 // memoryAvailableHardThreshold returns the hard memory.available eviction

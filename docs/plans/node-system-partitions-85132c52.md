@@ -223,13 +223,13 @@ User Pods:        Capacity - kubeReserved - systemReserved - systemPartition.mem
 - Modify: `pkg/kubelet/eviction/eviction_manager.go`
 - Modify: `pkg/kubelet/eviction/helpers.go`
 
-- [ ] When partition memory signal fires, filter `activePods` to only pods in system namespaces before ranking
-- [ ] Apply existing ranking logic (QoS class, priority, usage relative to requests) within the filtered set
-- [ ] Node-wide eviction unchanged — when node-wide memory signal fires, all pods (including system) are candidates
-- [ ] Write unit tests: partition signal triggers eviction only of system-partition pods
-- [ ] Write unit tests: node-wide signal still considers all pods including system-partition ones
-- [ ] Write unit tests: ranking within partition respects QoS class ordering
-- [ ] Run tests: `go test ./pkg/kubelet/eviction/...`
+- [x] When partition memory signal fires, filter `activePods` to only pods in system namespaces before ranking
+- [x] Apply existing ranking logic (QoS class, priority, usage relative to requests) within the filtered set
+- [x] Node-wide eviction unchanged — when node-wide memory signal fires, all pods (including system) are candidates
+- [x] Write unit tests: partition signal triggers eviction only of system-partition pods
+- [x] Write unit tests: node-wide signal still considers all pods including system-partition ones
+- [x] Write unit tests: ranking within partition respects QoS class ordering
+- [x] Run tests: `go test ./pkg/kubelet/eviction/...`
 
 ### Task 10: Add node e2e tests for cgroup hierarchy and pod placement
 
