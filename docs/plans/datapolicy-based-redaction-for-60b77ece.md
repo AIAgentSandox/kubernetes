@@ -4,7 +4,7 @@
 
 ### Task 1: Datapolicy-based Redaction for configz and Logging
 
-- [ ] # Datapolicy-based Redaction for configz and Logging
+- [x] # Datapolicy-based Redaction for configz and Logging
 
 ## Overview
 - Fix kubernetes/kubernetes#140101: kubelet `/configz` leaks `StaticPodURLHeader` credentials in cleartext
@@ -71,11 +71,11 @@
 **Files:**
 - Modify: `staging/src/k8s.io/component-base/logs/datapol/datapol.go`
 
-- [ ] add `Redact(obj interface{})` function that accepts any value and mutates in place
-- [ ] implement reflection walker: for struct fields with `datapolicy` tag, call `redactValue()`
-- [ ] implement `redactValue()` handling: string, []byte, slice of strings, map (preserve keys, redact values)
-- [ ] recurse into nested structs, slices, maps for untagged fields
-- [ ] handle pointer fields (dereference and recurse)
+- [x] add `Redact(obj interface{})` function that accepts any value and mutates in place
+- [x] implement reflection walker: for struct fields with `datapolicy` tag, call `redactValue()`
+- [x] implement `redactValue()` handling: string, []byte, slice of strings, map (preserve keys, redact values)
+- [x] recurse into nested structs, slices, maps for untagged fields
+- [x] handle pointer fields (dereference and recurse)
 
 ### Task 2: Add tests for Redact()
 

@@ -25,6 +25,130 @@ import (
 	"k8s.io/klog/v2"
 )
 
+// redacted is the placeholder value written over every field tagged with
+// `datapolicy`. It matches the flagz/zpages "CLASSIFIED" convention.
+const redacted = "CLASSIFIED"
+
+// Redact walks obj via reflection and replaces the value of every field tagged
+// with `datapolicy` (regardless of the tag's value) with the string
+// "CLASSIFIED". Redaction happens in place, so callers MUST pass a pointer to a
+// deep copy of any object they do not want mutated. Fields without a datapolicy
+// tag are left untouched, but nested structs, slices, and maps are traversed so
+// that tagged fields nested arbitrarily deep are still redacted.
+func Redact(obj interface{}) {
+	defer func() {
+		if r := recover(); r != nil {
+			//TODO maybe export a metric
+			klog.Warningf("Error while redacting sensitive data: %v", r)
+		}
+	}()
+	v := reflect.ValueOf(obj)
+	if v.Kind() == reflect.Pointer || v.Kind() == reflect.Interface {
+		if v.IsNil() {
+			return
+		}
+		v = v.Elem()
+	}
+	redactWalk(v)
+}
+
+// redactWalk traverses untagged values looking for struct fields carrying a
+// datapolicy tag. When it finds one it hands the field to redactValue.
+func redactWalk(v reflect.Value) {
+	switch v.Kind() {
+	case reflect.Pointer, reflect.Interface:
+		if v.IsNil() {
+			return
+		}
+		redactWalk(v.Elem())
+	case reflect.Struct:
+		t := v.Type()
+		for i := 0; i < t.NumField(); i++ {
+			fv := v.Field(i)
+			// Unexported fields cannot be set via reflection; skip them.
+			if !fv.CanSet() {
+				continue
+			}
+			if _, ok := t.Field(i).Tag.Lookup("datapolicy"); ok {
+				redactValue(fv)
+				continue
+			}
+			redactWalk(fv)
+		}
+	case reflect.Slice, reflect.Array:
+		for i := 0; i < v.Len(); i++ {
+			redactWalk(v.Index(i))
+		}
+	case reflect.Map:
+		iter := v.MapRange()
+		for iter.Next() {
+			// Map values are not addressable, so operate on a settable copy and
+			// write it back.
+			mv := iter.Value()
+			cp := reflect.New(mv.Type()).Elem()
+			cp.Set(mv)
+			redactWalk(cp)
+			v.SetMapIndex(iter.Key(), cp)
+		}
+	}
+}
+
+// redactValue overwrites the value of a datapolicy-tagged field. Strings,
+// byte slices, and string slices are replaced with the "CLASSIFIED" sentinel;
+// maps preserve their keys but have their leaf values redacted; pointers and
+// interfaces are dereferenced; any other scalar is zeroed.
+func redactValue(v reflect.Value) {
+	switch v.Kind() {
+	case reflect.String:
+		v.SetString(redacted)
+	case reflect.Pointer:
+		if v.IsNil() {
+			v.Set(reflect.New(v.Type().Elem()))
+		}
+		redactValue(v.Elem())
+	case reflect.Interface:
+		if v.IsNil() {
+			return
+		}
+		ev := v.Elem()
+		cp := reflect.New(ev.Type()).Elem()
+		cp.Set(ev)
+		redactValue(cp)
+		v.Set(cp)
+	case reflect.Slice:
+		switch v.Type().Elem().Kind() {
+		case reflect.Uint8:
+			// []byte
+			v.SetBytes([]byte(redacted))
+		case reflect.String:
+			// []string (or a named type with string elements)
+			s := reflect.MakeSlice(v.Type(), 1, 1)
+			s.Index(0).SetString(redacted)
+			v.Set(s)
+		default:
+			for i := 0; i < v.Len(); i++ {
+				redactValue(v.Index(i))
+			}
+		}
+	case reflect.Array:
+		for i := 0; i < v.Len(); i++ {
+			redactValue(v.Index(i))
+		}
+	case reflect.Map:
+		iter := v.MapRange()
+		for iter.Next() {
+			mv := iter.Value()
+			cp := reflect.New(mv.Type()).Elem()
+			cp.Set(mv)
+			redactValue(cp)
+			v.SetMapIndex(iter.Key(), cp)
+		}
+	default:
+		// Numbers, bools, and other scalars: clear the value.
+		v.Set(reflect.Zero(v.Type()))
+	}
+}
+
 // Verify returns a list of the datatypes contained in the argument that can be
 // considered sensitive w.r.t. to logging
 func Verify(value interface{}) []string {
