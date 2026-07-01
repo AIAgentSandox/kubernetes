@@ -117,12 +117,12 @@ User Pods:        Capacity - kubeReserved - systemReserved - systemPartition.mem
 - Modify: `staging/src/k8s.io/kubelet/config/v1beta1/types.go`
 - Modify: `pkg/kubelet/apis/config/types.go`
 
-- [ ] Add `NodeSystemPartition` feature gate constant to `pkg/features/kube_features.go` as alpha (default false)
-- [ ] Add `SystemPartitionConfiguration` struct to `pkg/kubelet/apis/config/types.go` with `MemoryLimit resource.Quantity`, `CPUSet string`, `Namespaces []string`
-- [ ] Add `SystemPartition SystemPartitionConfiguration` field to `KubeletConfiguration` internal type
-- [ ] Add corresponding versioned struct and field to `staging/src/k8s.io/kubelet/config/v1beta1/types.go` with json tags (`systemPartition`, `memoryLimit`, `cpuset`, `namespaces`)
-- [ ] Run code generators: `hack/update-codegen.sh` for deepcopy and conversion
-- [ ] Verify build: `go build ./pkg/kubelet/...`
+- [x] Add `NodeSystemPartition` feature gate constant to `pkg/features/kube_features.go` as alpha (default false)
+- [x] Add `SystemPartitionConfiguration` struct to `pkg/kubelet/apis/config/types.go` with `MemoryLimit resource.Quantity`, `CPUSet string`, `Namespaces []string`
+- [x] Add `SystemPartition SystemPartitionConfiguration` field to `KubeletConfiguration` internal type
+- [x] Add corresponding versioned struct and field to `staging/src/k8s.io/kubelet/config/v1beta1/types.go` with json tags (`systemPartition`, `memoryLimit`, `cpuset`, `namespaces`)
+- [x] Run code generators: `hack/update-codegen.sh` for deepcopy and conversion
+- [x] Verify build: `go build ./pkg/kubelet/...`
 
 ### Task 2: Add configuration validation
 

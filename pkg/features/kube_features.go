@@ -692,6 +692,13 @@ const (
 	// Permits kubelet to run with swap enabled.
 	NodeSwap featuregate.Feature = "NodeSwap"
 
+	// kep: https://kep.k8s.io/5894
+	//
+	// Enables a dedicated kubepods/system cgroup partition for system pods,
+	// isolating them from user workloads with dedicated memory limits and CPU
+	// sets.
+	NodeSystemPartition featuregate.Feature = "NodeSystemPartition"
+
 	// owner: @sanposhiho, @wojtek-t
 	// kep: https://kep.k8s.io/5278
 	//
@@ -1669,6 +1676,10 @@ var defaultVersionedKubernetesFeatureGates = map[featuregate.Feature]featuregate
 		{Version: version.MustParse("1.34"), Default: true, PreRelease: featuregate.GA, LockToDefault: true}, // remove in 1.37
 	},
 
+	NodeSystemPartition: {
+		{Version: version.MustParse("1.37"), Default: false, PreRelease: featuregate.Alpha},
+	},
+
 	NominatedNodeNameForExpectation: {
 		{Version: version.MustParse("1.34"), Default: false, PreRelease: featuregate.Alpha},
 		{Version: version.MustParse("1.35"), Default: true, PreRelease: featuregate.Beta},
@@ -2441,6 +2452,8 @@ var defaultKubernetesFeatureGateDependencies = map[featuregate.Feature][]feature
 	NodeLogQuery: {},
 
 	NodeSwap: {},
+
+	NodeSystemPartition: {},
 
 	NominatedNodeNameForExpectation: {},
 

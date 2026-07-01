@@ -18,6 +18,7 @@ package v1beta1
 
 import (
 	v1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	logsapi "k8s.io/component-base/logs/api/v1"
 	tracingapi "k8s.io/component-base/tracing/api/v1"
@@ -959,6 +960,34 @@ type KubeletConfiguration struct {
 	// UserNamespaces contains User Namespace configurations.
 	// +optional
 	UserNamespaces *UserNamespaces `json:"userNamespaces,omitempty"`
+
+	// systemPartition configures a dedicated cgroup partition (kubepods/system)
+	// for system pods, isolating them from user workloads with dedicated memory
+	// limits and CPU sets. It is only honored when the NodeSystemPartition
+	// feature gate is enabled.
+	// +featureGate=NodeSystemPartition
+	// +optional
+	SystemPartition SystemPartitionConfiguration `json:"systemPartition,omitempty"`
+}
+
+// SystemPartitionConfiguration configures the dedicated system pod cgroup
+// partition (kubepods/system). It is only honored when the NodeSystemPartition
+// feature gate is enabled.
+type SystemPartitionConfiguration struct {
+	// memoryLimit is the maximum amount of memory available to pods placed in
+	// the system partition. It is applied as memory.max on the
+	// kubepods/system cgroup.
+	// +optional
+	MemoryLimit resource.Quantity `json:"memoryLimit,omitempty"`
+	// cpuset is the set of CPUs available to pods placed in the system
+	// partition. It is applied as cpuset.cpus on the kubepods/system cgroup.
+	// For example: "0-3".
+	// +optional
+	CPUSet string `json:"cpuset,omitempty"`
+	// namespaces is the list of pod namespaces whose pods are placed in the
+	// system partition. Pods in any other namespace use the default partition.
+	// +optional
+	Namespaces []string `json:"namespaces,omitempty"`
 }
 
 type KubeletAuthorizationMode string

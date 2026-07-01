@@ -18,6 +18,7 @@ package config
 
 import (
 	v1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	logsapi "k8s.io/component-base/logs/api/v1"
 	tracingapi "k8s.io/component-base/tracing/api/v1"
@@ -563,6 +564,13 @@ type KubeletConfiguration struct {
 	// +featureGate=UserNamespacesSupport
 	// +optional
 	UserNamespaces *UserNamespaces
+
+	// SystemPartition configures a dedicated cgroup partition (kubepods/system)
+	// for system pods, isolating them from user workloads with dedicated memory
+	// limits and CPU sets.
+	// +featureGate=NodeSystemPartition
+	// +optional
+	SystemPartition SystemPartitionConfiguration
 }
 
 // KubeletAuthorizationMode denotes the authorization mode for the kubelet
@@ -830,6 +838,26 @@ type MemorySwapConfiguration struct {
 	// +featureGate=NodeSwap
 	// +optional
 	SwapBehavior string
+}
+
+// SystemPartitionConfiguration configures the dedicated system pod cgroup
+// partition (kubepods/system). It is only honored when the NodeSystemPartition
+// feature gate is enabled.
+type SystemPartitionConfiguration struct {
+	// MemoryLimit is the maximum amount of memory available to pods placed in
+	// the system partition. It is applied as memory.max on the
+	// kubepods/system cgroup.
+	// +optional
+	MemoryLimit resource.Quantity
+	// CPUSet is the set of CPUs available to pods placed in the system
+	// partition. It is applied as cpuset.cpus on the kubepods/system cgroup.
+	// For example: "0-3".
+	// +optional
+	CPUSet string
+	// Namespaces is the list of pod namespaces whose pods are placed in the
+	// system partition. Pods in any other namespace use the default partition.
+	// +optional
+	Namespaces []string
 }
 
 // CrashLoopBackOffConfig is used for setting configuration for this kubelet's
