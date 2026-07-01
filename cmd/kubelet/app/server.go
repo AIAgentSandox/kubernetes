@@ -946,6 +946,7 @@ func run(ctx context.Context, s *options.KubeletServer, kubeDeps *kubelet.Depend
 				TopologyManagerPolicy:        s.TopologyManagerPolicy,
 				TopologyManagerScope:         s.TopologyManagerScope,
 				TopologyManagerPolicyOptions: topologyManagerPolicyOptions,
+				SystemPartition:              s.SystemPartition,
 			},
 			s.FailSwapOn,
 			kubeDeps.Recorder,

@@ -49,6 +49,7 @@ import (
 	pluginwatcherapi "k8s.io/kubelet/pkg/apis/pluginregistration/v1"
 	podresourcesapi "k8s.io/kubelet/pkg/apis/podresources/v1"
 	kubefeatures "k8s.io/kubernetes/pkg/features"
+	kubeletconfig "k8s.io/kubernetes/pkg/kubelet/apis/config"
 	"k8s.io/kubernetes/pkg/kubelet/cadvisor"
 	"k8s.io/kubernetes/pkg/kubelet/cm/cpumanager"
 	"k8s.io/kubernetes/pkg/kubelet/cm/devicemanager"
@@ -70,7 +71,51 @@ import (
 	"k8s.io/kubernetes/pkg/kubelet/util/swap"
 	schedulerframework "k8s.io/kubernetes/pkg/scheduler/framework"
 	"k8s.io/kubernetes/pkg/util/oom"
+	"k8s.io/utils/cpuset"
 )
+
+// systemPartitionCgroupBaseName is the last component of the kubepods/system
+// cgroup name that holds the system pod partition.
+const systemPartitionCgroupBaseName = "system"
+
+// systemPartitionConfigured returns true when the NodeSystemPartition feature
+// gate is enabled and a system partition is configured (at least one namespace
+// is assigned to it).
+func systemPartitionConfigured(config kubeletconfig.SystemPartitionConfiguration) bool {
+	return utilfeature.DefaultFeatureGate.Enabled(kubefeatures.NodeSystemPartition) && len(config.Namespaces) > 0
+}
+
+// createSystemPartitionCgroup creates (or updates when it already exists) the
+// kubepods/system cgroup with the configured resource constraints. The memory
+// limit is applied as memory.max and the cpuset as cpuset.cpus.
+func createSystemPartitionCgroup(logger klog.Logger, cgroupManager CgroupManager, name CgroupName, config kubeletconfig.SystemPartitionConfiguration) error {
+	resourceParameters := &ResourceConfig{}
+	if memoryLimit := config.MemoryLimit.Value(); memoryLimit > 0 {
+		resourceParameters.Memory = &memoryLimit
+	}
+	if config.CPUSet != "" {
+		cpus, err := cpuset.Parse(config.CPUSet)
+		if err != nil {
+			return fmt.Errorf("failed to parse system partition cpuset %q: %w", config.CPUSet, err)
+		}
+		resourceParameters.CPUSet = cpus
+	}
+
+	cgroupConfig := &CgroupConfig{
+		Name:               name,
+		ResourceParameters: resourceParameters,
+	}
+	if cgroupManager.Exists(name) {
+		if err := cgroupManager.Update(logger, cgroupConfig); err != nil {
+			return fmt.Errorf("failed to update system partition cgroup %v: %w", name, err)
+		}
+		return nil
+	}
+	if err := cgroupManager.Create(logger, cgroupConfig); err != nil {
+		return fmt.Errorf("failed to create system partition cgroup %v: %w", name, err)
+	}
+	return nil
+}
 
 // A non-user container tracked by the Kubelet.
 type systemContainer struct {
@@ -121,6 +166,10 @@ type containerManagerImpl struct {
 	// Absolute cgroupfs path to a cgroup that Kubelet needs to place all pods under.
 	// This path include a top level container for enforcing Node Allocatable.
 	cgroupRoot CgroupName
+	// systemPartitionCgroupName is the name of the kubepods/system cgroup that
+	// holds system pods when the NodeSystemPartition feature is enabled and a
+	// system partition is configured. It is empty (nil) otherwise.
+	systemPartitionCgroupName CgroupName
 	// Event recorder interface.
 	recorder record.EventRecorder
 	// Interface for QoS cgroup management
@@ -275,24 +324,34 @@ func NewContainerManager(ctx context.Context, mountUtil mount.Interface, cadviso
 		// This way, all sub modules can avoid having to understand the concept of node allocatable.
 		cgroupRoot = NewCgroupName(cgroupRoot, defaultNodeAllocatableCgroupName)
 	}
+	// When the NodeSystemPartition feature is enabled and a system partition is
+	// configured, compute the name of the dedicated kubepods/system cgroup. This
+	// is only meaningful when the QoS cgroup hierarchy is enabled.
+	var systemPartitionCgroupName CgroupName
+	if nodeConfig.CgroupsPerQOS && systemPartitionConfigured(nodeConfig.SystemPartition) {
+		systemPartitionCgroupName = NewCgroupName(cgroupRoot, systemPartitionCgroupBaseName)
+		logger.Info("System partition enabled", "systemPartitionCgroupName", systemPartitionCgroupName)
+	}
+
 	logger.Info("Creating Container Manager object based on Node Config", "nodeConfig", nodeConfig)
 
-	qosContainerManager, err := NewQOSContainerManager(subsystems, cgroupRoot, nodeConfig, cgroupManager)
+	qosContainerManager, err := NewQOSContainerManager(subsystems, cgroupRoot, systemPartitionCgroupName, nodeConfig, cgroupManager)
 	if err != nil {
 		return nil, err
 	}
 
 	cm := &containerManagerImpl{
-		cadvisorInterface:   cadvisorInterface,
-		mountUtil:           mountUtil,
-		NodeConfig:          nodeConfig,
-		subsystems:          subsystems,
-		cgroupManager:       cgroupManager,
-		capacity:            capacity,
-		internalCapacity:    internalCapacity,
-		cgroupRoot:          cgroupRoot,
-		recorder:            recorder,
-		qosContainerManager: qosContainerManager,
+		cadvisorInterface:         cadvisorInterface,
+		mountUtil:                 mountUtil,
+		NodeConfig:                nodeConfig,
+		subsystems:                subsystems,
+		cgroupManager:             cgroupManager,
+		capacity:                  capacity,
+		internalCapacity:          internalCapacity,
+		cgroupRoot:                cgroupRoot,
+		systemPartitionCgroupName: systemPartitionCgroupName,
+		recorder:                  recorder,
+		qosContainerManager:       qosContainerManager,
 	}
 
 	cm.topologyManager, err = topologymanager.NewManager(
@@ -406,9 +465,10 @@ func (cm *containerManagerImpl) NewPodContainerManager() PodContainerManager {
 			enforceCPULimits:  cm.EnforceCPULimits,
 			// cpuCFSQuotaPeriod is in microseconds. NodeConfig.CPUCFSQuotaPeriod is time.Duration (measured in nano seconds).
 			// Convert (cm.CPUCFSQuotaPeriod) [nanoseconds] / time.Microsecond (1000) to get cpuCFSQuotaPeriod in microseconds.
-			cpuCFSQuotaPeriod:       uint64(cm.CPUCFSQuotaPeriod / time.Microsecond),
-			podContainerManager:     cm,
-			memoryReservationPolicy: cm.MemoryReservationPolicy,
+			cpuCFSQuotaPeriod:         uint64(cm.CPUCFSQuotaPeriod / time.Microsecond),
+			podContainerManager:       cm,
+			memoryReservationPolicy:   cm.MemoryReservationPolicy,
+			systemPartitionCgroupName: cm.systemPartitionCgroupName,
 		}
 	}
 	return &podContainerManagerNoop{
@@ -540,6 +600,13 @@ func (cm *containerManagerImpl) setupNode(ctx context.Context, activePods Active
 	if cm.NodeConfig.CgroupsPerQOS {
 		if err := cm.createNodeAllocatableCgroups(logger); err != nil {
 			return err
+		}
+		// Create the kubepods/system partition cgroup before the QoS containers
+		// so that the QoS sub-cgroups can be nested underneath it.
+		if len(cm.systemPartitionCgroupName) > 0 {
+			if err := createSystemPartitionCgroup(logger, cm.cgroupManager, cm.systemPartitionCgroupName, cm.SystemPartition); err != nil {
+				return fmt.Errorf("failed to initialize system partition cgroup: %w", err)
+			}
 		}
 		err = cm.qosContainerManager.Start(ctx, cm.GetNodeAllocatableAbsolute, activePods)
 		if err != nil {

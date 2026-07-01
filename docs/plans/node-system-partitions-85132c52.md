@@ -145,13 +145,13 @@ User Pods:        Capacity - kubeReserved - systemReserved - systemPartition.mem
 - Modify: `pkg/kubelet/cm/container_manager.go`
 - Modify: `pkg/kubelet/cm/types.go`
 
-- [ ] Add `systemPartitionCgroupName CgroupName` field to `containerManagerImpl` in `container_manager_linux.go`
-- [ ] In `NewContainerManager` or `Start`: when feature gate enabled and `SystemPartition` configured, compute `systemPartitionCgroupName = NewCgroupName(cgroupRoot, "system")`
-- [ ] Create the `kubepods/system/` cgroup with `memory.max` from `SystemPartition.MemoryLimit` and `cpuset.cpus` from `SystemPartition.CPUSet`
-- [ ] Pass `systemPartitionCgroupName` to QoS container manager and pod container manager constructors
-- [ ] Wire `SystemPartition` config through `NodeConfig` so it's available to sub-managers
-- [ ] Write unit tests for system partition cgroup creation (enabled vs disabled)
-- [ ] Run tests: `go test ./pkg/kubelet/cm/...`
+- [x] Add `systemPartitionCgroupName CgroupName` field to `containerManagerImpl` in `container_manager_linux.go`
+- [x] In `NewContainerManager` or `Start`: when feature gate enabled and `SystemPartition` configured, compute `systemPartitionCgroupName = NewCgroupName(cgroupRoot, "system")`
+- [x] Create the `kubepods/system/` cgroup with `memory.max` from `SystemPartition.MemoryLimit` and `cpuset.cpus` from `SystemPartition.CPUSet`
+- [x] Pass `systemPartitionCgroupName` to QoS container manager and pod container manager constructors
+- [x] Wire `SystemPartition` config through `NodeConfig` so it's available to sub-managers
+- [x] Write unit tests for system partition cgroup creation (enabled vs disabled)
+- [x] Run tests: `go test ./pkg/kubelet/cm/...`
 
 ### Task 4: Extend QoS container manager for two roots
 

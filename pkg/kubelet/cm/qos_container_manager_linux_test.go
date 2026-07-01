@@ -294,6 +294,9 @@ type fakeCgroupManager struct {
 	mutex   sync.Mutex
 	created []*CgroupConfig
 	updates []*CgroupConfig
+	// exists is the value returned by Exists(). It defaults to false so that
+	// Start() takes the Create() path.
+	exists bool
 }
 
 // Update() is the observation point for this test.
@@ -320,7 +323,7 @@ func (f *fakeCgroupManager) Create(l klog.Logger, config *CgroupConfig) error {
 
 func (f *fakeCgroupManager) Destroy(l klog.Logger, config *CgroupConfig) error { return nil }
 func (f *fakeCgroupManager) Validate(name CgroupName) error                    { return nil }
-func (f *fakeCgroupManager) Exists(name CgroupName) bool                       { return false }
+func (f *fakeCgroupManager) Exists(name CgroupName) bool                       { return f.exists }
 func (f *fakeCgroupManager) Name(name CgroupName) string                       { return name.ToCgroupfs() }
 func (f *fakeCgroupManager) CgroupName(name string) CgroupName {
 	return ParseCgroupfsToCgroupName(name)

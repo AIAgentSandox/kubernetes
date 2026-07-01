@@ -200,6 +200,10 @@ type NodeConfig struct {
 	TopologyManagerPolicy        string
 	TopologyManagerPolicyOptions map[string]string
 	CgroupVersion                int
+	// SystemPartition configures the dedicated kubepods/system cgroup partition
+	// for system pods. It is only honored when the NodeSystemPartition feature
+	// gate is enabled.
+	SystemPartition kubeletconfig.SystemPartitionConfiguration
 }
 
 type NodeAllocatableConfig struct {

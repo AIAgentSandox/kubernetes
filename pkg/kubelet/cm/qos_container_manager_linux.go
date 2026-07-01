@@ -55,17 +55,21 @@ type QOSContainerManager interface {
 
 type qosContainerManagerImpl struct {
 	sync.Mutex
-	qosContainersInfo       QOSContainersInfo
-	subsystems              *CgroupSubsystems
-	cgroupManager           CgroupManager
-	activePods              ActivePodsFunc
-	getNodeAllocatable      func() v1.ResourceList
-	cgroupRoot              CgroupName
+	qosContainersInfo  QOSContainersInfo
+	subsystems         *CgroupSubsystems
+	cgroupManager      CgroupManager
+	activePods         ActivePodsFunc
+	getNodeAllocatable func() v1.ResourceList
+	cgroupRoot         CgroupName
+	// systemCgroupRoot is the kubepods/system partition root. It is empty (nil)
+	// unless the NodeSystemPartition feature is enabled and a system partition
+	// is configured.
+	systemCgroupRoot        CgroupName
 	qosReserved             map[v1.ResourceName]int64
 	memoryReservationPolicy kubeletconfig.MemoryReservationPolicy
 }
 
-func NewQOSContainerManager(subsystems *CgroupSubsystems, cgroupRoot CgroupName, nodeConfig NodeConfig, cgroupManager CgroupManager) (QOSContainerManager, error) {
+func NewQOSContainerManager(subsystems *CgroupSubsystems, cgroupRoot CgroupName, systemCgroupRoot CgroupName, nodeConfig NodeConfig, cgroupManager CgroupManager) (QOSContainerManager, error) {
 	if !nodeConfig.CgroupsPerQOS {
 		return &qosContainerManagerNoop{
 			cgroupRoot: cgroupRoot,
@@ -76,6 +80,7 @@ func NewQOSContainerManager(subsystems *CgroupSubsystems, cgroupRoot CgroupName,
 		subsystems:              subsystems,
 		cgroupManager:           cgroupManager,
 		cgroupRoot:              cgroupRoot,
+		systemCgroupRoot:        systemCgroupRoot,
 		qosReserved:             nodeConfig.QOSReserved,
 		memoryReservationPolicy: nodeConfig.MemoryReservationPolicy,
 	}, nil

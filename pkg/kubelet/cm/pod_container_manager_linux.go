@@ -60,6 +60,10 @@ type podContainerManagerImpl struct {
 	podContainerManager ContainerManager
 	// memoryReservationPolicy controls memory reservation protection behavior
 	memoryReservationPolicy kubeletconfig.MemoryReservationPolicy
+	// systemPartitionCgroupName is the name of the kubepods/system partition
+	// cgroup. It is empty (nil) unless the NodeSystemPartition feature is enabled
+	// and a system partition is configured.
+	systemPartitionCgroupName CgroupName
 }
 
 // Make sure that podContainerManagerImpl implements the PodContainerManager interface
