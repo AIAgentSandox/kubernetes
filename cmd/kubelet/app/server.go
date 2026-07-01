@@ -252,7 +252,7 @@ is checked every 20 seconds (also configurable with a flag).`,
 				return fmt.Errorf("initialize logging: %v", err)
 			}
 			// Dump the full effective KubeletConfiguration.
-			if cfgStr, err := marshalKubeletConfigForLog(logger, kubeletConfig); err != nil {
+			if cfgStr, err := marshalKubeletConfigForLog(kubeletConfig); err != nil {
 				// Logging must never block startup; log the error and continue.
 				logger.Error(err, "Failed to marshal effective KubeletConfiguration for logging")
 			} else {
@@ -270,7 +270,9 @@ is checked every 20 seconds (also configurable with a flag).`,
 				// into the error, so secrets are not leaked to logs on the
 				// validation-failure path.
 				safeConfig := kubeletConfig.DeepCopy()
-				datapol.Redact(logger, safeConfig)
+				if redactErr := datapol.Redact(safeConfig); redactErr != nil {
+					return fmt.Errorf("failed to validate kubelet configuration, error: %w (config redaction also failed: %v)", err, redactErr)
+				}
 				return fmt.Errorf("failed to validate kubelet configuration, error: %w, path: %s", err, safeConfig)
 			}
 
@@ -591,12 +593,14 @@ func setConfigz(cz *configz.Config, kc *kubeletconfiginternal.KubeletConfigurati
 // marshalKubeletConfigForLog renders the effective KubeletConfiguration as a human-readable
 // YAML string for startup logging. Fields tagged with `datapolicy` (e.g. the credential-bearing
 // StaticPodURLHeader) are redacted via datapol.Redact so secrets are not written to the log.
-func marshalKubeletConfigForLog(logger klog.Logger, kc *kubeletconfiginternal.KubeletConfiguration) (string, error) {
+func marshalKubeletConfigForLog(kc *kubeletconfiginternal.KubeletConfiguration) (string, error) {
 	// Redact datapolicy-tagged fields on a deep copy so secrets are not logged and
 	// the caller's config is left untouched. The internal type carries the
 	// datapolicy tags, so redact before converting to the versioned type.
 	safe := kc.DeepCopy()
-	datapol.Redact(logger, safe)
+	if err := datapol.Redact(safe); err != nil {
+		return "", fmt.Errorf("failed to redact sensitive fields: %w", err)
+	}
 	versioned, err := convertToVersionedKubeletConfig(safe)
 	if err != nil {
 		return "", err

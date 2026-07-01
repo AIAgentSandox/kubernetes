@@ -59,7 +59,6 @@ import (
 
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/component-base/logs/datapol"
-	"k8s.io/klog/v2"
 )
 
 const DefaultConfigzPath = "/configz"
@@ -136,7 +135,9 @@ func (v *Config) MarshalJSON() ([]byte, error) {
 		return json.Marshal(v.val)
 	}
 	redacted := v.val.DeepCopyObject()
-	datapol.Redact(klog.Background(), redacted)
+	if err := datapol.Redact(redacted); err != nil {
+		return nil, fmt.Errorf("failed to redact sensitive fields: %w", err)
+	}
 	return json.Marshal(redacted)
 }
 

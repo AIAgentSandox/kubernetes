@@ -392,7 +392,7 @@ type ExtenderTLSConfig struct {
 	// CertData holds PEM-encoded bytes (typically read from a client certificate file).
 	// CertData takes precedence over CertFile
 	// +listType=atomic
-	CertData []byte `json:"certData,omitempty" datapolicy:"security-key"`
+	CertData []byte `json:"certData,omitempty"`
 	// KeyData holds PEM-encoded bytes (typically read from a client certificate key file).
 	// KeyData takes precedence over KeyFile
 	// +listType=atomic
@@ -400,7 +400,7 @@ type ExtenderTLSConfig struct {
 	// CAData holds PEM-encoded bytes (typically read from a root certificates bundle).
 	// CAData takes precedence over CAFile
 	// +listType=atomic
-	CAData []byte `json:"caData,omitempty" datapolicy:"security-key"`
+	CAData []byte `json:"caData,omitempty"`
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object

@@ -215,7 +215,6 @@ func aliasedSliceMap() map[string][]string {
 }
 
 func TestRedact(t *testing.T) {
-	logger, _ := ktesting.NewTestContext(t)
 	testcases := []struct {
 		name   string
 		value  interface{}
@@ -302,7 +301,7 @@ func TestRedact(t *testing.T) {
 	}}
 	for _, tc := range testcases {
 		t.Run(tc.name, func(t *testing.T) {
-			Redact(logger, tc.value)
+			Redact(tc.value)
 			assert.Equal(t, tc.expect, tc.value)
 		})
 	}
@@ -311,12 +310,11 @@ func TestRedact(t *testing.T) {
 // TestRedactNilAndNonPointer verifies Redact does not panic on inputs it cannot
 // mutate.
 func TestRedactNilAndNonPointer(t *testing.T) {
-	logger, _ := ktesting.NewTestContext(t)
 	// nil interface
-	Redact(logger, nil)
+	Redact(nil)
 	// non-pointer struct cannot be mutated but must not panic
 	v := redactString{Token: marker}
-	Redact(logger, v)
+	Redact(v)
 }
 
 // redactCyclic is a self-referential type used to prove Redact does not recurse
@@ -329,13 +327,12 @@ type redactCyclic struct {
 }
 
 func TestRedactCyclic(t *testing.T) {
-	logger, _ := ktesting.NewTestContext(t)
 	// Pointer cycle: node references itself.
 	node := &redactCyclic{Token: marker}
 	node.Self = node
 	node.Peers = map[string]*redactCyclic{"self": node}
 
-	Redact(logger, node)
+	Redact(node)
 
 	if node.Token != redacted {
 		t.Errorf("Token not redacted on cyclic input: got %q", node.Token)
@@ -353,7 +350,6 @@ func TestRedactCyclic(t *testing.T) {
 // the slice/interface path until a fatal stack overflow that recover() cannot
 // catch.
 func TestRedactCyclicSlice(t *testing.T) {
-	logger, _ := ktesting.NewTestContext(t)
 	// Self-referential slice: element 0 holds the slice itself.
 	s := make([]interface{}, 1)
 	s[0] = s
@@ -365,7 +361,7 @@ func TestRedactCyclicSlice(t *testing.T) {
 	}{Data: s}
 
 	// Must return (break the cycle) rather than crash.
-	Redact(logger, holder)
+	Redact(holder)
 }
 
 // TestRedactAliasedSubslice proves that two slices sharing a backing array but
@@ -374,7 +370,6 @@ func TestRedactCyclicSlice(t *testing.T) {
 // on the backing-array address alone (without length) would skip the longer
 // slice as "already seen" and leak the tagged field.
 func TestRedactAliasedSubslice(t *testing.T) {
-	logger, _ := ktesting.NewTestContext(t)
 	type tagged struct {
 		Token string `datapolicy:"token"`
 	}
@@ -387,7 +382,7 @@ func TestRedactAliasedSubslice(t *testing.T) {
 		Full:  backing,
 	}
 
-	Redact(logger, holder)
+	Redact(holder)
 
 	for i := range backing {
 		if backing[i].Token != redacted {

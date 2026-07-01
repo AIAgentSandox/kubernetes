@@ -21,6 +21,7 @@ limitations under the License.
 package datapol
 
 import (
+	"fmt"
 	"reflect"
 	"strings"
 
@@ -37,20 +38,21 @@ const redacted = "CLASSIFIED"
 // deep copy of any object they do not want mutated. Fields without a datapolicy
 // tag are left untouched, but nested structs, slices, and maps are traversed so
 // that tagged fields nested arbitrarily deep are still redacted.
-func Redact(logger klog.Logger, obj interface{}) {
+func Redact(obj interface{}) (retErr error) {
 	defer func() {
 		if r := recover(); r != nil {
-			logger.Error(nil, "Error while redacting sensitive data", "panic", r)
+			retErr = fmt.Errorf("panic while redacting sensitive data: %v", r)
 		}
 	}()
 	v := reflect.ValueOf(obj)
 	if v.Kind() == reflect.Pointer || v.Kind() == reflect.Interface {
 		if v.IsNil() {
-			return
+			return nil
 		}
 		v = v.Elem()
 	}
 	redactWalk(v, map[visitKey]struct{}{})
+	return nil
 }
 
 // visitKey identifies a value already visited during a walk. ptr is the value's
