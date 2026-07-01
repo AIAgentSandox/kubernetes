@@ -29,6 +29,7 @@ import (
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/component-base/logs/datapol"
+	"k8s.io/klog/v2/ktesting"
 	"k8s.io/kubernetes/cmd/kubelet/app/options"
 	kubeletconfiginternal "k8s.io/kubernetes/pkg/kubelet/apis/config"
 )
@@ -556,6 +557,7 @@ readOnlyPort: 9999
 }
 
 func TestMarshalKubeletConfigForLog(t *testing.T) {
+	logger, _ := ktesting.NewTestContext(t)
 	kc := &kubeletconfiginternal.KubeletConfiguration{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       "KubeletConfiguration",
@@ -570,7 +572,7 @@ func TestMarshalKubeletConfigForLog(t *testing.T) {
 		},
 	}
 
-	out, err := marshalKubeletConfigForLog(kc)
+	out, err := marshalKubeletConfigForLog(logger, kc)
 	require.NoError(t, err)
 
 	// (2) The output carries the external GroupVersionKind, mirroring /configz.
@@ -595,6 +597,7 @@ func TestMarshalKubeletConfigForLog(t *testing.T) {
 // must live on the v1beta1 type as well as the internal type, otherwise the
 // StaticPodURLHeader credentials leak over /configz (kubernetes#140101).
 func TestConfigzVersionedConfigIsRedactable(t *testing.T) {
+	logger, _ := ktesting.NewTestContext(t)
 	kc := &kubeletconfiginternal.KubeletConfiguration{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       "KubeletConfiguration",
@@ -608,7 +611,7 @@ func TestConfigzVersionedConfigIsRedactable(t *testing.T) {
 	// Mirror what setConfigz stores and what configz.MarshalJSON serializes.
 	versioned, err := convertToVersionedKubeletConfig(kc)
 	require.NoError(t, err)
-	datapol.Redact(versioned)
+	datapol.Redact(logger, versioned)
 
 	require.Equal(t, []string{"CLASSIFIED"}, versioned.StaticPodURLHeader["Authorization"],
 		"versioned StaticPodURLHeader must be redacted; the datapolicy tag must exist on the v1beta1 type")

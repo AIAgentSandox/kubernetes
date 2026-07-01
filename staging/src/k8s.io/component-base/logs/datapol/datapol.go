@@ -37,10 +37,10 @@ const redacted = "CLASSIFIED"
 // deep copy of any object they do not want mutated. Fields without a datapolicy
 // tag are left untouched, but nested structs, slices, and maps are traversed so
 // that tagged fields nested arbitrarily deep are still redacted.
-func Redact(obj interface{}) {
+func Redact(logger klog.Logger, obj interface{}) {
 	defer func() {
 		if r := recover(); r != nil {
-			klog.Warningf("Error while redacting sensitive data: %v", r)
+			logger.Error(nil, "Error while redacting sensitive data", "panic", r)
 		}
 	}()
 	v := reflect.ValueOf(obj)
@@ -248,10 +248,10 @@ func redactValue(v reflect.Value, visited map[visitKey]struct{}) {
 
 // Verify returns a list of the datatypes contained in the argument that can be
 // considered sensitive w.r.t. to logging
-func Verify(value interface{}) []string {
+func Verify(logger klog.Logger, value interface{}) []string {
 	defer func() {
 		if r := recover(); r != nil {
-			klog.Warningf("Error while inspecting arguments for sensitive data: %v", r)
+			logger.Error(nil, "Error while inspecting arguments for sensitive data", "panic", r)
 		}
 	}()
 	t := reflect.ValueOf(value)

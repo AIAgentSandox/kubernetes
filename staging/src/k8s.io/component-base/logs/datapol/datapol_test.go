@@ -23,6 +23,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"k8s.io/klog/v2/ktesting"
 )
 
 const (
@@ -58,6 +59,7 @@ type datapolBehindPointer struct {
 }
 
 func TestValidate(t *testing.T) {
+	logger, _ := ktesting.NewTestContext(t)
 	testcases := []struct {
 		name      string
 		value     interface{}
@@ -138,7 +140,7 @@ func TestValidate(t *testing.T) {
 		expect: []string{},
 	}}
 	for _, tc := range testcases {
-		res := Verify(tc.value)
+		res := Verify(logger, tc.value)
 		if !assert.ElementsMatch(t, tc.expect, res) {
 			t.Errorf("Wrong set of tags for %q. expect %v, got %v", tc.name, tc.expect, res)
 		}
@@ -213,6 +215,7 @@ func aliasedSliceMap() map[string][]string {
 }
 
 func TestRedact(t *testing.T) {
+	logger, _ := ktesting.NewTestContext(t)
 	testcases := []struct {
 		name   string
 		value  interface{}
@@ -299,7 +302,7 @@ func TestRedact(t *testing.T) {
 	}}
 	for _, tc := range testcases {
 		t.Run(tc.name, func(t *testing.T) {
-			Redact(tc.value)
+			Redact(logger, tc.value)
 			assert.Equal(t, tc.expect, tc.value)
 		})
 	}
@@ -308,11 +311,12 @@ func TestRedact(t *testing.T) {
 // TestRedactNilAndNonPointer verifies Redact does not panic on inputs it cannot
 // mutate.
 func TestRedactNilAndNonPointer(t *testing.T) {
+	logger, _ := ktesting.NewTestContext(t)
 	// nil interface
-	Redact(nil)
+	Redact(logger, nil)
 	// non-pointer struct cannot be mutated but must not panic
 	v := redactString{Token: marker}
-	Redact(v)
+	Redact(logger, v)
 }
 
 // redactCyclic is a self-referential type used to prove Redact does not recurse
@@ -325,12 +329,13 @@ type redactCyclic struct {
 }
 
 func TestRedactCyclic(t *testing.T) {
+	logger, _ := ktesting.NewTestContext(t)
 	// Pointer cycle: node references itself.
 	node := &redactCyclic{Token: marker}
 	node.Self = node
 	node.Peers = map[string]*redactCyclic{"self": node}
 
-	Redact(node)
+	Redact(logger, node)
 
 	if node.Token != redacted {
 		t.Errorf("Token not redacted on cyclic input: got %q", node.Token)
@@ -348,6 +353,7 @@ func TestRedactCyclic(t *testing.T) {
 // the slice/interface path until a fatal stack overflow that recover() cannot
 // catch.
 func TestRedactCyclicSlice(t *testing.T) {
+	logger, _ := ktesting.NewTestContext(t)
 	// Self-referential slice: element 0 holds the slice itself.
 	s := make([]interface{}, 1)
 	s[0] = s
@@ -359,7 +365,7 @@ func TestRedactCyclicSlice(t *testing.T) {
 	}{Data: s}
 
 	// Must return (break the cycle) rather than crash.
-	Redact(holder)
+	Redact(logger, holder)
 }
 
 // TestRedactAliasedSubslice proves that two slices sharing a backing array but
@@ -368,6 +374,7 @@ func TestRedactCyclicSlice(t *testing.T) {
 // on the backing-array address alone (without length) would skip the longer
 // slice as "already seen" and leak the tagged field.
 func TestRedactAliasedSubslice(t *testing.T) {
+	logger, _ := ktesting.NewTestContext(t)
 	type tagged struct {
 		Token string `datapolicy:"token"`
 	}
@@ -380,7 +387,7 @@ func TestRedactAliasedSubslice(t *testing.T) {
 		Full:  backing,
 	}
 
-	Redact(holder)
+	Redact(logger, holder)
 
 	for i := range backing {
 		if backing[i].Token != redacted {
