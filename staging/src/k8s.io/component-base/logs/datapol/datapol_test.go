@@ -246,6 +246,14 @@ func TestRedact(t *testing.T) {
 		name:   "struct with no datapolicy tags is a no-op",
 		value:  &redactNoTags{A: "a", B: 1, C: map[string]string{"k": "v"}},
 		expect: &redactNoTags{A: "a", B: 1, C: map[string]string{"k": "v"}},
+	}, {
+		name:   "tagged field inside a by-value interface is redacted",
+		value:  &struct{ V interface{} }{V: redactString{Token: marker, Public: "keep"}},
+		expect: &struct{ V interface{} }{V: redactString{Token: redacted, Public: "keep"}},
+	}, {
+		name:   "tagged field inside a pointer-in-interface is redacted",
+		value:  &struct{ V interface{} }{V: &redactString{Token: marker, Public: "keep"}},
+		expect: &struct{ V interface{} }{V: &redactString{Token: redacted, Public: "keep"}},
 	}}
 	for _, tc := range testcases {
 		t.Run(tc.name, func(t *testing.T) {

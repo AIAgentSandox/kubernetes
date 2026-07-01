@@ -58,11 +58,26 @@ func Redact(obj interface{}) {
 // datapolicy tag. When it finds one it hands the field to redactValue.
 func redactWalk(v reflect.Value) {
 	switch v.Kind() {
-	case reflect.Pointer, reflect.Interface:
+	case reflect.Pointer:
 		if v.IsNil() {
 			return
 		}
 		redactWalk(v.Elem())
+	case reflect.Interface:
+		if v.IsNil() {
+			return
+		}
+		// An interface's Elem() is not addressable, so walking it directly would
+		// leave any nested tagged fields unset (CanSet is false). Walk a settable
+		// copy and write it back so tagged fields reached through a by-value
+		// interface are still redacted.
+		ev := v.Elem()
+		cp := reflect.New(ev.Type()).Elem()
+		cp.Set(ev)
+		redactWalk(cp)
+		if v.CanSet() {
+			v.Set(cp)
+		}
 	case reflect.Struct:
 		t := v.Type()
 		for i := 0; i < t.NumField(); i++ {
