@@ -115,12 +115,12 @@
 
 ### Task 5: Verify acceptance criteria
 
-- [ ] verify `/configz` redacts `StaticPodURLHeader` values to `"CLASSIFIED"`
-- [ ] verify kubelet logging redacts `StaticPodURLHeader` values to `"CLASSIFIED"`
-- [ ] verify untagged fields are unaffected in both paths
-- [ ] run datapol tests: `go test ./staging/src/k8s.io/component-base/logs/datapol/ -v`
-- [ ] run configz tests: `go test ./staging/src/k8s.io/component-base/configz/ -v`
-- [ ] verify no test regressions in affected packages
+- [x] verify `/configz` redacts `StaticPodURLHeader` values to `"CLASSIFIED"` (TestConfigzRedactsDatapolicyFields passes)
+- [x] verify kubelet logging redacts `StaticPodURLHeader` values to `"CLASSIFIED"` (TestMarshalKubeletConfigForLog passes)
+- [x] verify untagged fields are unaffected in both paths (asserted in both tests above)
+- [x] run datapol tests: `go test ./staging/src/k8s.io/component-base/logs/datapol/ -v` (PASS)
+- [x] run configz tests: `go test ./staging/src/k8s.io/component-base/configz/ -v` (PASS)
+- [x] verify no test regressions in affected packages (datapol, configz, cmd/kubelet/app all PASS)
 
 ### Task 6: [Final] Update documentation
 
