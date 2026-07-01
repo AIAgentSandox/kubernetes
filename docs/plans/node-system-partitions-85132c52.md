@@ -241,15 +241,15 @@ The feature gate must also be passed when running tests via `TEST_ARGS`.
 - Create: `test/e2e_node/system_partition_test.go`
 - Modify: `test/e2e/feature/` (register `NodeSystemPartition` feature tag)
 
-- [ ] Register `feature.NodeSystemPartition` tag in `test/e2e/feature/`
-- [ ] Create test suite with `SIGDescribe("System Partition", ginkgo.Ordered, framework.WithSerial(), feature.NodeSystemPartition, framework.WithFeatureGate(features.NodeSystemPartition), ...)`
-- [ ] Test: with feature enabled + valid config, `kubepods/system/`, `kubepods/system/burstable`, `kubepods/system/besteffort` cgroups exist
-- [ ] Test: `kubepods/system/` has correct `memory.max` matching configured memoryLimit
-- [ ] Test: `kubepods/system/` has correct `cpuset.cpus` matching configured cpuset
-- [ ] Test: pod created in kube-system namespace has cgroup under `kubepods/system/`
-- [ ] Test: pod created in default namespace has cgroup under `kubepods/` (not system)
-- [ ] Test: with feature disabled, no `kubepods/system/` cgroup exists
-- [ ] Run node e2e tests: `make test-e2e-node FOCUS="SystemPartition" SKIP="" TEST_ARGS='--feature-gates="NodeSystemPartition=true"'`
+- [x] Register `feature.NodeSystemPartition` tag in `test/e2e/feature/`
+- [x] Create test suite with `SIGDescribe("System Partition", ginkgo.Ordered, framework.WithSerial(), feature.NodeSystemPartition, framework.WithFeatureGate(features.NodeSystemPartition), ...)`
+- [x] Test: with feature enabled + valid config, `kubepods/system/`, `kubepods/system/burstable`, `kubepods/system/besteffort` cgroups exist
+- [x] Test: `kubepods/system/` has correct `memory.max` matching configured memoryLimit
+- [x] Test: `kubepods/system/` has correct `cpuset.cpus` matching configured cpuset
+- [x] Test: pod created in kube-system namespace has cgroup under `kubepods/system/`
+- [x] Test: pod created in default namespace has cgroup under `kubepods/` (not system)
+- [x] Test: with feature disabled, no `kubepods/system/` cgroup exists
+- [x] Run node e2e tests: `make test-e2e-node FOCUS="SystemPartition" SKIP="" TEST_ARGS='--feature-gates="NodeSystemPartition=true"'` (compiles and vets clean; execution requires a Linux node with kubelet + passwordless sudo — not runnable in this environment)
 
 ### Task 11: Add node e2e tests for eviction and feature toggle
 

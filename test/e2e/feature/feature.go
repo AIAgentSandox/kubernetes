@@ -319,6 +319,12 @@ var (
 	NodeProblemDetector = framework.WithFeature(framework.ValidFeatures.Add("NodeProblemDetector"))
 
 	// Owner: sig-node
+	// kep: https://kep.k8s.io/5894
+	// Marks tests that exercise the dedicated system pod cgroup partition
+	// (kubepods/system). Requires the NodeSystemPartition feature gate.
+	NodeSystemPartition = framework.WithFeature(framework.ValidFeatures.Add("NodeSystemPartition"))
+
+	// Owner: sig-node
 	// Tests aiming to verify oom_score functionality
 	OOMScoreAdj = framework.WithFeature(framework.ValidFeatures.Add("OOMScoreAdj"))
 
