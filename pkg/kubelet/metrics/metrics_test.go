@@ -18,8 +18,10 @@ package metrics
 
 import (
 	"os"
+	"strings"
 	"testing"
 
+	"k8s.io/component-base/metrics"
 	"k8s.io/component-base/metrics/testutil"
 )
 
@@ -70,6 +72,37 @@ func TestImagePullDurationMetric(t *testing.T) {
 		}
 
 	})
+}
+
+func TestPartitionMemoryMetrics(t *testing.T) {
+	registry := metrics.NewKubeRegistry()
+	registry.MustRegister(PartitionMemoryUsage)
+	registry.MustRegister(PartitionMemoryLimit)
+	defer func() {
+		PartitionMemoryUsage.Reset()
+		PartitionMemoryLimit.Reset()
+	}()
+
+	PartitionMemoryUsage.WithLabelValues("system").Set(1024)
+	PartitionMemoryLimit.WithLabelValues("system").Set(4 * 1024 * 1024 * 1024)
+
+	wantUsage := `
+# HELP kubelet_partition_memory_usage_bytes [ALPHA] Current memory usage in bytes of a node resource partition, broken down by partition.
+# TYPE kubelet_partition_memory_usage_bytes gauge
+kubelet_partition_memory_usage_bytes{partition="system"} 1024
+`
+	if err := testutil.GatherAndCompare(registry, strings.NewReader(wantUsage), "kubelet_partition_memory_usage_bytes"); err != nil {
+		t.Errorf("unexpected partition memory usage metric: %v", err)
+	}
+
+	wantLimit := `
+# HELP kubelet_partition_memory_limit_bytes [ALPHA] Configured memory limit in bytes of a node resource partition, broken down by partition.
+# TYPE kubelet_partition_memory_limit_bytes gauge
+kubelet_partition_memory_limit_bytes{partition="system"} 4.294967296e+09
+`
+	if err := testutil.GatherAndCompare(registry, strings.NewReader(wantLimit), "kubelet_partition_memory_limit_bytes"); err != nil {
+		t.Errorf("unexpected partition memory limit metric: %v", err)
+	}
 }
 
 func clearMetrics() {

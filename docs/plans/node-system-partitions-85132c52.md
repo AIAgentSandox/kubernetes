@@ -198,10 +198,10 @@ User Pods:        Capacity - kubeReserved - systemReserved - systemPartition.mem
 **Files:**
 - Modify: `pkg/kubelet/metrics/metrics.go`
 
-- [ ] Register `kubelet_partition_memory_usage_bytes` gauge vec with `partition` label
-- [ ] Register `kubelet_partition_memory_limit_bytes` gauge vec with `partition` label
-- [ ] Write unit tests: metrics registered and can be set/read
-- [ ] Run tests: `go test ./pkg/kubelet/metrics/...`
+- [x] Register `kubelet_partition_memory_usage_bytes` gauge vec with `partition` label
+- [x] Register `kubelet_partition_memory_limit_bytes` gauge vec with `partition` label
+- [x] Write unit tests: metrics registered and can be set/read
+- [x] Run tests: `go test ./pkg/kubelet/metrics/...`
 
 ### Task 8: Add partition-aware eviction monitoring
 

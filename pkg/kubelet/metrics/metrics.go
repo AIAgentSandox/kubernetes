@@ -169,6 +169,10 @@ const (
 	MemoryQoSNodeMemoryMinBytesKey = "memory_qos_node_memory_min_bytes"
 	MemoryQoSNodeMemoryLowBytesKey = "memory_qos_node_memory_low_bytes"
 
+	// Metric keys for the node system partition (KEP-5894)
+	PartitionMemoryUsageBytesKey = "partition_memory_usage_bytes"
+	PartitionMemoryLimitBytesKey = "partition_memory_limit_bytes"
+
 	// Values used in metric labels
 	Container          = "container"
 	InitContainer      = "init_container"
@@ -1303,6 +1307,30 @@ var (
 			StabilityLevel: metrics.ALPHA,
 		},
 	)
+
+	// PartitionMemoryUsage tracks the current memory usage (bytes) of a node
+	// resource partition, broken down by partition (e.g. "system").
+	PartitionMemoryUsage = metrics.NewGaugeVec(
+		&metrics.GaugeOpts{
+			Subsystem:      KubeletSubsystem,
+			Name:           PartitionMemoryUsageBytesKey,
+			Help:           "Current memory usage in bytes of a node resource partition, broken down by partition.",
+			StabilityLevel: metrics.ALPHA,
+		},
+		[]string{"partition"},
+	)
+
+	// PartitionMemoryLimit tracks the configured memory limit (bytes) of a node
+	// resource partition, broken down by partition (e.g. "system").
+	PartitionMemoryLimit = metrics.NewGaugeVec(
+		&metrics.GaugeOpts{
+			Subsystem:      KubeletSubsystem,
+			Name:           PartitionMemoryLimitBytesKey,
+			Help:           "Configured memory limit in bytes of a node resource partition, broken down by partition.",
+			StabilityLevel: metrics.ALPHA,
+		},
+		[]string{"partition"},
+	)
 )
 
 var registerMetrics sync.Once
@@ -1433,6 +1461,11 @@ func Register() {
 		}
 
 		legacyregistry.MustRegister(PodWatchEventsDroppedTotal)
+
+		if utilfeature.DefaultFeatureGate.Enabled(features.NodeSystemPartition) {
+			legacyregistry.MustRegister(PartitionMemoryUsage)
+			legacyregistry.MustRegister(PartitionMemoryLimit)
+		}
 	})
 }
 
