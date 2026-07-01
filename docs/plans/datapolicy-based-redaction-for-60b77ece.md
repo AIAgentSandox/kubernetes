@@ -95,12 +95,12 @@
 **Files:**
 - Modify: `staging/src/k8s.io/component-base/configz/configz.go`
 
-- [ ] add import for `k8s.io/component-base/logs/datapol`
-- [ ] in `MarshalJSON()`: call `v.val.DeepCopyObject()` to get a copy
-- [ ] call `datapol.Redact()` on the deep copy
-- [ ] `json.Marshal` the redacted copy instead of `v.val`
-- [ ] write test: register a config with a datapolicy-tagged field, verify `/configz` output contains `"CLASSIFIED"` not the secret
-- [ ] run tests: `go test ./staging/src/k8s.io/component-base/configz/ -v`
+- [x] add import for `k8s.io/component-base/logs/datapol`
+- [x] in `MarshalJSON()`: call `v.val.DeepCopyObject()` to get a copy
+- [x] call `datapol.Redact()` on the deep copy
+- [x] `json.Marshal` the redacted copy instead of `v.val`
+- [x] write test: register a config with a datapolicy-tagged field, verify `/configz` output contains `"CLASSIFIED"` not the secret
+- [x] run tests: `go test ./staging/src/k8s.io/component-base/configz/ -v`
 
 ### Task 4: Replace hardcoded masking in kubelet logging
 
