@@ -15,7 +15,9 @@ limitations under the License.
 */
 
 // Package datapol contains functions to determine if objects contain sensitive
-// data to e.g. make decisions on whether to log them or not.
+// data to e.g. make decisions on whether to log them or not, and to redact
+// datapolicy-tagged fields in place before such objects are logged or served
+// (see Redact).
 package datapol
 
 import (
@@ -102,8 +104,10 @@ func redactValue(v reflect.Value) {
 	case reflect.String:
 		v.SetString(redacted)
 	case reflect.Pointer:
+		// A nil pointer holds no value to redact; leave it nil rather than
+		// materializing an empty object that was not present in the input.
 		if v.IsNil() {
-			v.Set(reflect.New(v.Type().Elem()))
+			return
 		}
 		redactValue(v.Elem())
 	case reflect.Interface:
