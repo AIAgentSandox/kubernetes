@@ -63,41 +63,43 @@ the podresources API).
 **Files:**
 - Modify: `test/e2e_node/device_plugin_test.go`
 
-- [ ] Add a new `ginkgo.It("Keeps device plugin assignments across kubelet
+- [x] Add a new `ginkgo.It("Keeps device plugin assignments across kubelet
   restarts for pods with completed init containers", ...)` block inside
   `testDevicePlugin`, placed next to the other kubelet-restart tests (after the
   "will not attempt to admit the succeeded pod after the kubelet restart and
   device plugin removed" test is a good location). Base it on the example test
   in the task description / issue.
-- [ ] Construct the pod with `RestartPolicy: v1.RestartPolicyAlways`, one
+- [x] Construct the pod with `RestartPolicy: v1.RestartPolicyAlways`, one
   `InitContainer` ("init-1") with command sleeping for
   `sleepIntervalToCompletion`, and one regular `Container` ("regular-1") with
   command sleeping for `sleepIntervalForever`. Both request a single
   `e2enode.SampleDeviceResourceName` via `Limits`/`Requests`. Use the
   `podRECMD = "devs=$(ls /tmp/ | egrep '^Dev-[0-9]+$') && echo stub devices:
   $devs && sleep %s"` pattern and `busyboxImage`.
-- [ ] Create the pod with `e2epod.NewPodClient(f).CreateSync`, then use
+- [x] Create the pod with `e2epod.NewPodClient(f).CreateSync`, then use
   `parseLog` with `deviceIDRE = "stub devices: (Dev-[0-9]+)"` to confirm the
   init container ("init-1") obtained a device and completed, and the regular
   container ("regular-1") obtained a device and is running. Assert both device
   IDs are non-empty.
-- [ ] Restart the kubelet (`restartKubelet(ctx, true)`), wait for the node to be
+- [x] Restart the kubelet (`restartKubelet(ctx, true)`), wait for the node to be
   schedulable (`e2enode.WaitForAllNodesSchedulable`), and wait for the sample
   device capacity/allocatable to return to `e2enode.SampleDevsAmount` via
   `getLocalTestNode` + `e2enode.CountSampleDeviceCapacity` /
   `CountSampleDeviceAllocatable`.
-- [ ] Assert the same pod instance is still running after the restart using
+- [x] Assert the same pod instance is still running after the restart using
   `gomega.Eventually(ctx, getPodByName).WithArguments(f, pod1.Name)...
   Should(BeTheSamePodStillRunning(pod1), ...)`.
-- [ ] Verify the post-restart device assignment for the regular container using
+- [x] Verify the post-restart device assignment for the regular container using
   the podresources API: refresh `v1PodResources` via `getV1NodeDevices`, then
   `checkPodResourcesAssignment(v1PodResources, pod2.Namespace, pod2.Name,
   pod2.Spec.Containers[0].Name, e2enode.SampleDeviceResourceName,
   []string{regDevID})` and `framework.ExpectNoError`.
-- [ ] Validate: `gofmt -l test/e2e_node/device_plugin_test.go` reports no diff;
+- [x] Validate: `gofmt -l test/e2e_node/device_plugin_test.go` reports no diff;
   `go vet ./test/e2e_node/` passes; the package compiles via
   `go build ./test/e2e_node/...` (or `go test -c -tags e2e_node
   ./test/e2e_node/` if a build tag is required). Fix any compile/vet/format
   issues. (Running the test itself requires the e2e_node harness and is not
-  automatable here.)
-- [ ] Run e2e_node tests using `make test-e2e-node` with proper FOCUS, SKIP (do not forget to disable fail-on-swap).
+  automatable here.) — Verified: gofmt reports no diff, `go vet
+  ./test/e2e_node/` clean, `go test -c -o /dev/null ./test/e2e_node/` compiles
+  (exit 0).
+- [x] Run e2e_node tests using `make test-e2e-node` with proper FOCUS, SKIP (do not forget to disable fail-on-swap). — Skipped (not automatable in this environment: requires a Linux host with password-less sudo, a restartable real kubelet, and the sample device plugin harness). Intended command: `make test-e2e-node FOCUS="Keeps device plugin assignments across kubelet restarts for pods with completed init containers" TEST_ARGS='--kubelet-flags="--fail-swap-on=false"'`.
