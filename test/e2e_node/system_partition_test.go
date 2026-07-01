@@ -23,6 +23,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -32,6 +33,8 @@ import (
 	"k8s.io/kubernetes/pkg/features"
 	kubeletconfig "k8s.io/kubernetes/pkg/kubelet/apis/config"
 	"k8s.io/kubernetes/pkg/kubelet/cm"
+	"k8s.io/kubernetes/pkg/kubelet/eviction"
+	evictionapi "k8s.io/kubernetes/pkg/kubelet/eviction/api"
 	"k8s.io/kubernetes/test/e2e/feature"
 	"k8s.io/kubernetes/test/e2e/framework"
 	e2epod "k8s.io/kubernetes/test/e2e/framework/pod"
@@ -47,6 +50,17 @@ const (
 	systemPartitionMemoryLimit = "1Gi"
 	// systemPartitionCPUSet is the cpuset.cpus applied to kubepods/system.
 	systemPartitionCPUSet = "0"
+	// systemPartitionEvictionThreshold is the memory.available hard eviction
+	// threshold. The system partition reuses the node-level memory.available
+	// threshold, applied relative to the partition memoryLimit. With a 1Gi
+	// partition, the partition crosses the threshold once it uses roughly
+	// (1Gi - threshold) bytes, which is well below memory.max, so eviction
+	// fires before the kernel OOM killer.
+	systemPartitionEvictionThreshold = "300Mi"
+	// systemPartitionEvictionTimeout bounds how long we wait for the system
+	// partition memhog pod to be evicted. The memhog fills the partition
+	// slowly to avoid tripping the kernel OOM killer, so this is generous.
+	systemPartitionEvictionTimeout = 15 * time.Minute
 )
 
 // systemPartitionCgroupName returns the internal CgroupName for the
@@ -136,6 +150,39 @@ func makeSystemPartitionPod(name, namespace string, requests, limits v1.Resource
 	}
 }
 
+// makeSystemPartitionMemhogPod returns a memory-consuming pod placed in the
+// given namespace. It reuses the shared memhog helper (agnhost stress) which
+// allocates memory slowly enough that the eviction manager can react before the
+// kernel OOM killer fires. No resource limits are set, so the pod fills the
+// enclosing cgroup (the system partition memory.max) up to the point eviction
+// intervenes.
+func makeSystemPartitionMemhogPod(name, namespace string) *v1.Pod {
+	pod := getMemhogPod(name, name, v1.ResourceRequirements{})
+	pod.Namespace = namespace
+	return pod
+}
+
+// waitForPodEvicted waits until the given pod reaches the Failed phase with the
+// eviction reason. It fails the test if the pod's container was OOM killed,
+// which indicates eviction did not fire before the kernel OOM killer.
+func waitForPodEvicted(ctx context.Context, f *framework.Framework, namespace, name string, timeout time.Duration) {
+	gomega.Eventually(ctx, func(ctx context.Context) error {
+		pod, err := f.ClientSet.CoreV1().Pods(namespace).Get(ctx, name, metav1.GetOptions{})
+		if err != nil {
+			return err
+		}
+		for _, cs := range pod.Status.ContainerStatuses {
+			if cs.State.Terminated != nil && cs.State.Terminated.Reason == "OOMKilled" {
+				framework.Failf("pod %s/%s container was OOMKilled; eviction did not fire before the kernel OOM killer", namespace, name)
+			}
+		}
+		if pod.Status.Phase == v1.PodFailed && pod.Status.Reason == eviction.Reason {
+			return nil
+		}
+		return fmt.Errorf("pod %s/%s not yet evicted: phase=%q reason=%q", namespace, name, pod.Status.Phase, pod.Status.Reason)
+	}, timeout, evictionPollInterval).Should(gomega.Succeed())
+}
+
 // readCgroupInt64 reads a cgroup v2 file and returns its content as int64.
 // It returns -1 for the literal "max".
 func readCgroupInt64(cgroupPath, fileName string) (int64, error) {
@@ -195,6 +242,29 @@ var _ = SIGDescribe("System Partition", ginkgo.Ordered, framework.WithSerial(), 
 		} else {
 			newCfg.SystemPartition = kubeletconfig.SystemPartitionConfiguration{}
 		}
+		updateKubeletConfig(ctx, f, newCfg, true)
+	}
+
+	// configureSystemPartitionWithEviction restarts the kubelet with the feature
+	// enabled and a memory.available hard eviction threshold configured. The
+	// partition reuses the node-level memory.available threshold, applied
+	// relative to the partition memoryLimit. Because the node has far more memory
+	// than the 1Gi partition, only the partition crosses the threshold, so
+	// eviction is scoped to the system partition.
+	configureSystemPartitionWithEviction := func(ctx context.Context) {
+		newCfg := oldCfg.DeepCopy()
+		if newCfg.FeatureGates == nil {
+			newCfg.FeatureGates = make(map[string]bool)
+		}
+		newCfg.FeatureGates["NodeSystemPartition"] = true
+		newCfg.CgroupsPerQOS = true
+		newCfg.SystemPartition = kubeletconfig.SystemPartitionConfiguration{
+			MemoryLimit: resource.MustParse(systemPartitionMemoryLimit),
+			CPUSet:      systemPartitionCPUSet,
+			Namespaces:  []string{kubeapi.NamespaceSystem},
+		}
+		newCfg.EvictionHard = map[string]string{string(evictionapi.SignalMemoryAvailable): systemPartitionEvictionThreshold}
+		newCfg.EvictionMinimumReclaim = map[string]string{}
 		updateKubeletConfig(ctx, f, newCfg, true)
 	}
 
@@ -278,6 +348,102 @@ var _ = SIGDescribe("System Partition", ginkgo.Ordered, framework.WithSerial(), 
 			e2epod.NewPodClient(f).Create(ctx, pod)
 			err := e2epod.WaitForPodSuccessInNamespace(ctx, f.ClientSet, pod.Name, f.Namespace.Name)
 			framework.ExpectNoError(err)
+		})
+	})
+
+	ginkgo.Context("when the system partition is under memory pressure", framework.WithSlow(), framework.WithDisruptive(), func() {
+		ginkgo.BeforeEach(func(ctx context.Context) {
+			configureSystemPartitionWithEviction(ctx)
+		})
+
+		ginkgo.It("should evict a system-partition pod before the kernel OOM killer fires", func(ctx context.Context) {
+			// The memhog fills the 1Gi partition slowly. The partition reuses the
+			// node-level memory.available hard threshold, so once partition usage
+			// approaches memory.max the eviction manager evicts the pod. Because the
+			// threshold leaves headroom below memory.max, eviction must fire before a
+			// kernel OOM kill.
+			pod := makeSystemPartitionMemhogPod("system-partition-memhog", kubeapi.NamespaceSystem)
+			pod = e2epod.PodClientNS(f, kubeapi.NamespaceSystem).Create(ctx, pod)
+			ginkgo.DeferCleanup(func(ctx context.Context) {
+				e2epod.PodClientNS(f, kubeapi.NamespaceSystem).DeleteSync(ctx, pod.Name, metav1.DeleteOptions{}, f.Timeouts.PodDelete)
+			})
+
+			ginkgo.By("waiting for the system-partition pod to be evicted before a kernel OOM kill")
+			waitForPodEvicted(ctx, f, kubeapi.NamespaceSystem, pod.Name, systemPartitionEvictionTimeout)
+		})
+
+		ginkgo.It("should evict only system-partition pods when partition memory pressure fires", func(ctx context.Context) {
+			// A memhog in the system namespace drives the partition into memory
+			// pressure. A pod in a non-system namespace consumes no partition memory
+			// and must not be evicted by the partition-scoped signal.
+			systemPod := makeSystemPartitionMemhogPod("system-partition-memhog", kubeapi.NamespaceSystem)
+			systemPod = e2epod.PodClientNS(f, kubeapi.NamespaceSystem).Create(ctx, systemPod)
+			ginkgo.DeferCleanup(func(ctx context.Context) {
+				e2epod.PodClientNS(f, kubeapi.NamespaceSystem).DeleteSync(ctx, systemPod.Name, metav1.DeleteOptions{}, f.Timeouts.PodDelete)
+			})
+
+			defaultPod := makeSystemPartitionPod("default-partition-innocent", f.Namespace.Name,
+				getResourceList("100m", "100Mi"), getResourceList("100m", "100Mi"))
+			defaultPod = e2epod.NewPodClient(f).CreateSync(ctx, defaultPod)
+
+			ginkgo.By("waiting for the system-partition pod to be evicted")
+			waitForPodEvicted(ctx, f, kubeapi.NamespaceSystem, systemPod.Name, systemPartitionEvictionTimeout)
+
+			ginkgo.By("verifying the non-system-partition pod is not evicted by partition pressure")
+			gomega.Consistently(ctx, func(ctx context.Context) error {
+				got, err := f.ClientSet.CoreV1().Pods(f.Namespace.Name).Get(ctx, defaultPod.Name, metav1.GetOptions{})
+				if err != nil {
+					return err
+				}
+				if got.Status.Phase != v1.PodRunning {
+					return fmt.Errorf("default-partition pod %q unexpectedly left Running: phase=%q reason=%q", defaultPod.Name, got.Status.Phase, got.Status.Reason)
+				}
+				return nil
+			}, 30*time.Second, evictionPollInterval).Should(gomega.Succeed())
+		})
+	})
+
+	ginkgo.Context("when toggling the feature", framework.WithSlow(), framework.WithDisruptive(), func() {
+		ginkgo.It("should place system pods back under the default hierarchy after the feature is disabled", func(ctx context.Context) {
+			kubepods := cm.NewCgroupName(cm.RootCgroupName, defaultNodeAllocatableCgroup)
+
+			ginkgo.By("enabling the feature and placing a system pod under the system partition")
+			configureSystemPartition(ctx, true)
+			enabledPod := makeSystemPartitionPod("toggle-enabled", kubeapi.NamespaceSystem,
+				getResourceList("100m", "100Mi"), getResourceList("100m", "100Mi"))
+			enabledPod = e2epod.PodClientNS(f, kubeapi.NamespaceSystem).CreateSync(ctx, enabledPod)
+
+			systemCgroup := systemPartitionCgroupFsPath("pod" + string(enabledPod.UID))
+			gomega.Eventually(ctx, func() bool {
+				_, err := os.Stat(systemCgroup)
+				return err == nil
+			}, f.Timeouts.PodStart, framework.Poll).Should(gomega.BeTrue(),
+				fmt.Sprintf("expected system pod cgroup at %q while feature enabled", systemCgroup))
+
+			e2epod.PodClientNS(f, kubeapi.NamespaceSystem).DeleteSync(ctx, enabledPod.Name, metav1.DeleteOptions{}, f.Timeouts.PodDelete)
+
+			ginkgo.By("disabling the feature and restarting the kubelet")
+			configureSystemPartition(ctx, false)
+
+			ginkgo.By("verifying a new system pod is placed under the default hierarchy")
+			disabledPod := makeSystemPartitionPod("toggle-disabled", kubeapi.NamespaceSystem,
+				getResourceList("100m", "100Mi"), getResourceList("100m", "100Mi"))
+			disabledPod = e2epod.PodClientNS(f, kubeapi.NamespaceSystem).CreateSync(ctx, disabledPod)
+			ginkgo.DeferCleanup(func(ctx context.Context) {
+				e2epod.PodClientNS(f, kubeapi.NamespaceSystem).DeleteSync(ctx, disabledPod.Name, metav1.DeleteOptions{}, f.Timeouts.PodDelete)
+			})
+
+			defaultCgroup := filepath.Join(cgroupRoot, toCgroupFsName(cm.NewCgroupName(kubepods, "pod"+string(disabledPod.UID))))
+			gomega.Eventually(ctx, func() bool {
+				_, err := os.Stat(defaultCgroup)
+				return err == nil
+			}, f.Timeouts.PodStart, framework.Poll).Should(gomega.BeTrue(),
+				fmt.Sprintf("expected default pod cgroup at %q after feature disabled", defaultCgroup))
+
+			ginkgo.By("verifying the system partition cgroup no longer exists")
+			_, err := os.Stat(systemPartitionCgroupFsPath())
+			gomega.Expect(os.IsNotExist(err)).To(gomega.BeTrue(),
+				fmt.Sprintf("system partition cgroup should be cleaned up at %q after feature disabled", systemPartitionCgroupFsPath()))
 		})
 	})
 })

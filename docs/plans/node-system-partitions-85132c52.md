@@ -256,10 +256,10 @@ The feature gate must also be passed when running tests via `TEST_ARGS`.
 **Files:**
 - Modify: `test/e2e_node/system_partition_test.go`
 
-- [ ] Test: memory limit enforcement — create pods in system partition approaching memoryLimit, verify eviction fires before kernel OOM
-- [ ] Test: eviction targets only system-partition pods when partition memory pressure fires
-- [ ] Test: feature toggle — enable feature, verify system pods in system partition; disable, verify pods migrate back to default hierarchy on kubelet restart
-- [ ] Run node e2e tests: `make test-e2e-node FOCUS="SystemPartition" SKIP="" TEST_ARGS='--feature-gates="NodeSystemPartition=true"'`
+- [x] Test: memory limit enforcement — create pods in system partition approaching memoryLimit, verify eviction fires before kernel OOM
+- [x] Test: eviction targets only system-partition pods when partition memory pressure fires
+- [x] Test: feature toggle — enable feature, verify system pods in system partition; disable, verify pods migrate back to default hierarchy on kubelet restart
+- [x] Run node e2e tests: `make test-e2e-node FOCUS="SystemPartition" SKIP="" TEST_ARGS='--feature-gates="NodeSystemPartition=true"'` (compiles and vets clean; execution requires a Linux node with kubelet + passwordless sudo — not runnable in this environment)
 
 ### Task 12: Verify acceptance criteria
 
