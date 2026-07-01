@@ -334,11 +334,11 @@ type ExtenderTLSConfig struct {
 
 	// CertData holds PEM-encoded bytes (typically read from a client certificate file).
 	// CertData takes precedence over CertFile
-	CertData []byte
+	CertData []byte `datapolicy:"security-key"`
 	// KeyData holds PEM-encoded bytes (typically read from a client certificate key file).
 	// KeyData takes precedence over KeyFile
 	KeyData []byte `datapolicy:"security-key"`
 	// CAData holds PEM-encoded bytes (typically read from a root certificates bundle).
 	// CAData takes precedence over CAFile
-	CAData []byte
+	CAData []byte `datapolicy:"security-key"`
 }
