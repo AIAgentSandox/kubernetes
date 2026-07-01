@@ -189,6 +189,21 @@ type redactNoTags struct {
 	C map[string]string
 }
 
+// redactSharedMap has an untagged field declared before a tagged field. When
+// both alias the same map value, redaction of the tagged field must not be
+// skipped by the walk having already visited the map's address.
+type redactSharedMap struct {
+	Public map[string][]string
+	Secret map[string][]string `datapolicy:"token"`
+}
+
+// aliasedSharedMap returns a redactSharedMap whose Public and Secret fields
+// point at the same underlying map.
+func aliasedSharedMap() *redactSharedMap {
+	shared := map[string][]string{"Authorization": {"Bearer hunter2"}}
+	return &redactSharedMap{Public: shared, Secret: shared}
+}
+
 func TestRedact(t *testing.T) {
 	testcases := []struct {
 		name   string
@@ -254,6 +269,16 @@ func TestRedact(t *testing.T) {
 		name:   "tagged field inside a pointer-in-interface is redacted",
 		value:  &struct{ V interface{} }{V: &redactString{Token: marker, Public: "keep"}},
 		expect: &struct{ V interface{} }{V: &redactString{Token: redacted, Public: "keep"}},
+	}, {
+		// Regression: the untagged Public field is walked before the tagged
+		// Secret field. Both alias the same map, so if the walk's visited set is
+		// shared with value redaction, the tagged field's seen() check would
+		// short-circuit and leave the secret unredacted (fail-open). Because the
+		// storage is genuinely shared, redacting Secret also redacts Public,
+		// which is the safe (fail-closed) direction.
+		name:   "map aliased by an untagged field walked before the tagged field is still redacted",
+		value:  aliasedSharedMap(),
+		expect: &redactSharedMap{Public: map[string][]string{"Authorization": {redacted}}, Secret: map[string][]string{"Authorization": {redacted}}},
 	}}
 	for _, tc := range testcases {
 		t.Run(tc.name, func(t *testing.T) {

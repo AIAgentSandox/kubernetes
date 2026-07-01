@@ -111,7 +111,16 @@ func redactWalk(v reflect.Value, visited map[uintptr]struct{}) {
 				continue
 			}
 			if _, ok := t.Field(i).Tag.Lookup("datapolicy"); ok {
-				redactValue(fv, visited)
+				// Use a fresh visited set for the value redaction rather than
+				// sharing redactWalk's. The walk records the addresses of maps
+				// and pointers it merely traverses (without redacting); if a
+				// tagged field aliases one of those already-walked addresses,
+				// sharing the set would make seen() short-circuit and skip
+				// redaction entirely — a fail-open leak whose occurrence depends
+				// on struct field order. redactValue never re-enters redactWalk
+				// and zeroes structs instead of recursing into them, so its own
+				// cycle detection is self-contained within the fresh set.
+				redactValue(fv, map[uintptr]struct{}{})
 				continue
 			}
 			redactWalk(fv, visited)
