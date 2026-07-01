@@ -159,14 +159,14 @@ User Pods:        Capacity - kubeReserved - systemReserved - systemPartition.mem
 - Modify: `pkg/kubelet/cm/qos_container_manager_linux.go`
 - Modify: `pkg/kubelet/cm/types.go`
 
-- [ ] Add `systemCgroupRoot CgroupName` and `systemQOSContainersInfo QOSContainersInfo` fields to `qosContainerManagerImpl`
-- [ ] Add `GetSystemQOSContainersInfo() QOSContainersInfo` to `QOSContainerManager` interface
-- [ ] In `Start`: when system partition configured, create `system/burstable` and `system/besteffort` cgroups, populate `systemQOSContainersInfo` (Guaranteed = system root, Burstable = system/burstable, BestEffort = system/besteffort)
-- [ ] In `UpdateCgroups`: run CPU shares and memory limit adjustments for both default and system QoS cgroups, scoped to their respective pods (filter by namespace)
-- [ ] Update noop implementation to satisfy the interface
-- [ ] Write unit tests: system QoS cgroups created when configured, not created when feature off
-- [ ] Write unit tests: `UpdateCgroups` applies constraints to both sets independently
-- [ ] Run tests: `go test ./pkg/kubelet/cm/...`
+- [x] Add `systemCgroupRoot CgroupName` and `systemQOSContainersInfo QOSContainersInfo` fields to `qosContainerManagerImpl`
+- [x] Add `GetSystemQOSContainersInfo() QOSContainersInfo` to `QOSContainerManager` interface
+- [x] In `Start`: when system partition configured, create `system/burstable` and `system/besteffort` cgroups, populate `systemQOSContainersInfo` (Guaranteed = system root, Burstable = system/burstable, BestEffort = system/besteffort)
+- [x] In `UpdateCgroups`: run CPU shares and memory limit adjustments for both default and system QoS cgroups, scoped to their respective pods (filter by namespace)
+- [x] Update noop implementation to satisfy the interface
+- [x] Write unit tests: system QoS cgroups created when configured, not created when feature off
+- [x] Write unit tests: `UpdateCgroups` applies constraints to both sets independently
+- [x] Run tests: `go test ./pkg/kubelet/cm/...`
 
 ### Task 5: Route pods to correct cgroup partition
 

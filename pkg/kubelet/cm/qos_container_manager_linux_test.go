@@ -33,6 +33,7 @@ import (
 	resource "k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/apimachinery/pkg/util/uuid"
 	"k8s.io/klog/v2"
 	"k8s.io/klog/v2/ktesting"
@@ -240,7 +241,7 @@ func TestQoSContainerCgroup(t *testing.T) {
 				},
 			}
 
-			m.setMemoryQoS(logger, qosConfigs)
+			m.setMemoryQoS(logger, qosConfigs, tc.pods, true)
 
 			assert.Equal(t, tc.expectedGuaranteed, qosConfigs[v1.PodQOSGuaranteed].ResourceParameters.Unified[Cgroup2MemoryMin])
 			assert.Equal(t, tc.expectedBurstable, qosConfigs[v1.PodQOSBurstable].ResourceParameters.Unified[Cgroup2MemoryLow])
@@ -281,7 +282,7 @@ func TestQoSContainerCgroupWithMemoryReservationPolicyNone(t *testing.T) {
 		},
 	}
 
-	m.setMemoryQoS(logger, qosConfigs)
+	m.setMemoryQoS(logger, qosConfigs, activeTestPods(), true)
 
 	assert.Equal(t, "0", qosConfigs[v1.PodQOSGuaranteed].ResourceParameters.Unified[Cgroup2MemoryMin])
 	assert.Equal(t, "0", qosConfigs[v1.PodQOSBurstable].ResourceParameters.Unified[Cgroup2MemoryLow])
@@ -659,4 +660,166 @@ func TestQOSCPUConfigUpdate(t *testing.T) {
 			}
 		})
 	}
+}
+
+// burstableCPUPod builds a Burstable QoS pod (requests < limits) in the given
+// namespace with the supplied CPU request.
+func burstableCPUPod(name, namespace, cpuRequest string) *v1.Pod {
+	return &v1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			UID:       types.UID(uuid.NewUUID()),
+			Name:      name,
+			Namespace: namespace,
+		},
+		Spec: v1.PodSpec{
+			Containers: []v1.Container{
+				{
+					Name:  "foo",
+					Image: "busybox",
+					Resources: v1.ResourceRequirements{
+						Requests: v1.ResourceList{
+							v1.ResourceCPU:    resource.MustParse(cpuRequest),
+							v1.ResourceMemory: resource.MustParse("128Mi"),
+						},
+						Limits: v1.ResourceList{
+							v1.ResourceCPU:    resource.MustParse("4"),
+							v1.ResourceMemory: resource.MustParse("256Mi"),
+						},
+					},
+				},
+			},
+		},
+	}
+}
+
+// TestSystemPartitionQOSContainersCreated verifies that Start() creates the
+// mirror set of QoS cgroups under the kubepods/system root when a system
+// partition is configured, and does not create them otherwise.
+func TestSystemPartitionQOSContainersCreated(t *testing.T) {
+	_, ctx := ktesting.NewTestContext(t)
+
+	cgroupRoot := ParseCgroupfsToCgroupName("/")
+	cgroupRoot = NewCgroupName(cgroupRoot, defaultNodeAllocatableCgroupName)
+	systemRoot := NewCgroupName(cgroupRoot, systemPartitionCgroupBaseName)
+
+	systemBurstable := NewCgroupName(systemRoot, "burstable").ToCgroupfs()
+	systemBestEffort := NewCgroupName(systemRoot, "besteffort").ToCgroupfs()
+
+	tests := []struct {
+		name             string
+		systemCgroupRoot CgroupName
+		wantSystem       bool
+	}{
+		{name: "system partition configured", systemCgroupRoot: systemRoot, wantSystem: true},
+		{name: "system partition disabled", systemCgroupRoot: nil, wantSystem: false},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			fakeCM := &fakeCgroupManager{}
+			m := &qosContainerManagerImpl{
+				subsystems:              &CgroupSubsystems{},
+				cgroupManager:           fakeCM,
+				cgroupRoot:              cgroupRoot,
+				systemCgroupRoot:        tc.systemCgroupRoot,
+				memoryReservationPolicy: kubeletconfig.NoneMemoryReservationPolicy,
+			}
+
+			testCtx, cancel := context.WithCancel(ctx)
+			defer cancel()
+			err := m.Start(testCtx, func() v1.ResourceList { return v1.ResourceList{} }, func() []*v1.Pod { return nil })
+			require.NoError(t, err)
+			cancel()
+
+			// The default QoS cgroups are always created.
+			assert.Equal(t, cgroupRoot.ToCgroupfs(), m.GetQOSContainersInfo().Guaranteed.ToCgroupfs())
+
+			fakeCM.mutex.Lock()
+			createdNames := sets.New[string]()
+			for _, c := range fakeCM.created {
+				createdNames.Insert(c.Name.ToCgroupfs())
+			}
+			fakeCM.mutex.Unlock()
+
+			if tc.wantSystem {
+				assert.True(t, createdNames.Has(systemBurstable), "expected system burstable cgroup to be created")
+				assert.True(t, createdNames.Has(systemBestEffort), "expected system besteffort cgroup to be created")
+
+				info := m.GetSystemQOSContainersInfo()
+				assert.Equal(t, systemRoot.ToCgroupfs(), info.Guaranteed.ToCgroupfs())
+				assert.Equal(t, systemBurstable, info.Burstable.ToCgroupfs())
+				assert.Equal(t, systemBestEffort, info.BestEffort.ToCgroupfs())
+			} else {
+				assert.False(t, createdNames.Has(systemBurstable), "did not expect system cgroups when disabled")
+				assert.False(t, createdNames.Has(systemBestEffort), "did not expect system cgroups when disabled")
+				assert.Equal(t, QOSContainersInfo{}, m.GetSystemQOSContainersInfo())
+			}
+		})
+	}
+}
+
+// TestSystemPartitionUpdateCgroupsIndependent verifies that UpdateCgroups()
+// computes CPU share constraints for the default and system QoS cgroup sets
+// independently, scoping each set to the pods that belong to it by namespace.
+func TestSystemPartitionUpdateCgroupsIndependent(t *testing.T) {
+	logger, _ := ktesting.NewTestContext(t)
+
+	cgroupRoot := ParseCgroupfsToCgroupName("/")
+	cgroupRoot = NewCgroupName(cgroupRoot, defaultNodeAllocatableCgroupName)
+	systemRoot := NewCgroupName(cgroupRoot, systemPartitionCgroupBaseName)
+
+	fakeCM := &fakeCgroupManager{}
+	m := &qosContainerManagerImpl{
+		cgroupManager:           fakeCM,
+		cgroupRoot:              cgroupRoot,
+		systemCgroupRoot:        systemRoot,
+		systemNamespaces:        sets.New("kube-system"),
+		memoryReservationPolicy: kubeletconfig.NoneMemoryReservationPolicy,
+		qosContainersInfo: QOSContainersInfo{
+			Guaranteed: cgroupRoot,
+			Burstable:  NewCgroupName(cgroupRoot, "burstable"),
+			BestEffort: NewCgroupName(cgroupRoot, "besteffort"),
+		},
+		systemQOSContainersInfo: QOSContainersInfo{
+			Guaranteed: systemRoot,
+			Burstable:  NewCgroupName(systemRoot, "burstable"),
+			BestEffort: NewCgroupName(systemRoot, "besteffort"),
+		},
+	}
+
+	// One burstable pod (1 CPU) in the default namespace, and two burstable pods
+	// (1 CPU each) in the system namespace. Each partition's burstable CPU shares
+	// must be derived only from its own pods.
+	m.activePods = func() []*v1.Pod {
+		return []*v1.Pod{
+			burstableCPUPod("default-burstable", "default", "1"),
+			burstableCPUPod("system-burstable-1", "kube-system", "1"),
+			burstableCPUPod("system-burstable-2", "kube-system", "1"),
+		}
+	}
+
+	require.NoError(t, m.UpdateCgroups(logger))
+
+	defaultBurstable := m.qosContainersInfo.Burstable.ToCgroupfs()
+	systemBurstable := m.systemQOSContainersInfo.Burstable.ToCgroupfs()
+
+	var defaultShares, systemShares *uint64
+	fakeCM.mutex.Lock()
+	for _, c := range fakeCM.updates {
+		switch c.Name.ToCgroupfs() {
+		case defaultBurstable:
+			defaultShares = c.ResourceParameters.CPUShares
+		case systemBurstable:
+			systemShares = c.ResourceParameters.CPUShares
+		}
+	}
+	fakeCM.mutex.Unlock()
+
+	require.NotNil(t, defaultShares, "expected default burstable cgroup to be updated")
+	require.NotNil(t, systemShares, "expected system burstable cgroup to be updated")
+
+	// default namespace: 1 CPU -> 1024 shares.
+	assert.Equal(t, MilliCPUToShares(1000), *defaultShares)
+	// system namespace: 2 x 1 CPU -> 2048 shares.
+	assert.Equal(t, MilliCPUToShares(2000), *systemShares)
 }
