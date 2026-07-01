@@ -124,8 +124,8 @@
 
 ### Task 6: [Final] Update documentation
 
-- [ ] update CLAUDE.md if new patterns discovered
-- [ ] move this plan to `docs/plans/completed/`
+- [x] update CLAUDE.md if new patterns discovered (no new patterns — reused existing datapol reflection walker and configz/logging paths)
+- [x] move this plan to `docs/plans/completed/`
 
 ## Post-Completion
 
