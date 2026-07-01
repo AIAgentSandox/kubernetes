@@ -107,11 +107,11 @@
 **Files:**
 - Modify: `cmd/kubelet/app/server.go`
 
-- [ ] add import for `k8s.io/component-base/logs/datapol`
-- [ ] in `marshalKubeletConfigForLog()`: replace the `StaticPodURLHeader` loop with `datapol.Redact(versioned)`
-- [ ] update the function comment to reference datapolicy-based redaction
-- [ ] verify existing kubelet tests still pass: `go test ./cmd/kubelet/app/ -run TestMarshalKubeletConfig -v` (if such test exists, otherwise check for related tests)
-- [ ] run tests: `go test ./cmd/kubelet/app/ -count=1 -v -timeout 120s` (scoped to relevant tests)
+- [x] add import for `k8s.io/component-base/logs/datapol`
+- [x] in `marshalKubeletConfigForLog()`: replace the `StaticPodURLHeader` loop with `datapol.Redact(safe)` (redact the internal type, which carries the datapolicy tags, before converting to versioned — the v1beta1 type is untagged)
+- [x] update the function comment to reference datapolicy-based redaction
+- [x] verify existing kubelet tests still pass: `go test ./cmd/kubelet/app/ -run TestMarshalKubeletConfigForLog -v` (updated to expect `CLASSIFIED`)
+- [x] run tests: `go test ./cmd/kubelet/app/ -count=1 -timeout 120s` (all pass)
 
 ### Task 5: Verify acceptance criteria
 

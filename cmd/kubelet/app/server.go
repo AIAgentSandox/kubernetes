@@ -81,6 +81,7 @@ import (
 	cliflag "k8s.io/component-base/cli/flag"
 	"k8s.io/component-base/configz"
 	"k8s.io/component-base/featuregate"
+	"k8s.io/component-base/logs/datapol"
 	"k8s.io/component-base/logs"
 	logsapi "k8s.io/component-base/logs/api/v1"
 	"k8s.io/component-base/metrics"
@@ -582,14 +583,14 @@ func setConfigz(cz *configz.Config, kc *kubeletconfiginternal.KubeletConfigurati
 }
 
 // marshalKubeletConfigForLog renders the effective KubeletConfiguration as a human-readable
-// YAML string for startup logging. The output mirrors what /configz serves except the
-// sensitive field StaticPodURLHeader is masked while /configz outputs it.
+// YAML string for startup logging. Fields tagged with `datapolicy` (e.g. the credential-bearing
+// StaticPodURLHeader) are redacted via datapol.Redact so secrets are not written to the log.
 func marshalKubeletConfigForLog(kc *kubeletconfiginternal.KubeletConfiguration) (string, error) {
-	// Make the config safe for logging without mutating the caller's copy.
+	// Redact datapolicy-tagged fields on a deep copy so secrets are not logged and
+	// the caller's config is left untouched. The internal type carries the
+	// datapolicy tags, so redact before converting to the versioned type.
 	safe := kc.DeepCopy()
-	for k := range safe.StaticPodURLHeader {
-		safe.StaticPodURLHeader[k] = []string{"<masked>"}
-	}
+	datapol.Redact(safe)
 	versioned, err := convertToVersionedKubeletConfig(safe)
 	if err != nil {
 		return "", err

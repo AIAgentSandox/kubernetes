@@ -580,10 +580,10 @@ func TestMarshalKubeletConfigForLog(t *testing.T) {
 	require.Contains(t, out, "failSwapOn: false")
 	require.Contains(t, out, "memory.available: 200Mi")
 
-	// (3) Sensitive StaticPodURLHeader values are masked, never leaked.
-	require.Contains(t, out, "<masked>")
+	// (3) Sensitive StaticPodURLHeader values are redacted via datapolicy tags, never leaked.
+	require.Contains(t, out, "CLASSIFIED")
 	require.NotContains(t, out, "super-secret-token")
 
-	// The helper must not mutate the caller's config when masking.
+	// The helper must not mutate the caller's config when redacting.
 	require.Equal(t, []string{"Bearer super-secret-token"}, kc.StaticPodURLHeader["Authorization"])
 }
