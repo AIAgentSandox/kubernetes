@@ -265,7 +265,13 @@ is checked every 20 seconds (also configurable with a flag).`,
 
 			// We always validate the local configuration (command line + config file).
 			if err := kubeletconfigvalidation.ValidateKubeletConfiguration(kubeletConfig, utilfeature.DefaultFeatureGate); err != nil {
-				return fmt.Errorf("failed to validate kubelet configuration, error: %w, path: %s", err, kubeletConfig)
+				// Redact datapolicy-tagged fields (e.g. the credential-bearing
+				// StaticPodURLHeader) on a deep copy before formatting the config
+				// into the error, so secrets are not leaked to logs on the
+				// validation-failure path.
+				safeConfig := kubeletConfig.DeepCopy()
+				datapol.Redact(safeConfig)
+				return fmt.Errorf("failed to validate kubelet configuration, error: %w, path: %s", err, safeConfig)
 			}
 
 			if (kubeletConfig.KubeletCgroups != "" && kubeletConfig.KubeReservedCgroup != "") && (strings.Index(kubeletConfig.KubeletCgroups, kubeletConfig.KubeReservedCgroup) != 0) {
