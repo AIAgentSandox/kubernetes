@@ -137,3 +137,48 @@ func TestCreateSystemPartitionCgroup(t *testing.T) {
 		assert.Empty(t, fake.created)
 	})
 }
+
+func TestCleanupSystemPartitionCgroup(t *testing.T) {
+	logger, _ := ktesting.NewTestContext(t)
+
+	cgroupRoot := NewCgroupName(ParseCgroupfsToCgroupName("/"), defaultNodeAllocatableCgroupName)
+	systemRoot := NewCgroupName(cgroupRoot, systemPartitionCgroupBaseName)
+
+	t.Run("destroys leftover system partition hierarchy when it exists", func(t *testing.T) {
+		fake := &fakeCgroupManager{exists: true}
+		cm := &containerManagerImpl{
+			cgroupManager: fake,
+			cgroupRoot:    cgroupRoot,
+		}
+
+		cm.cleanupSystemPartitionCgroup(logger)
+
+		// QoS sub-cgroups must be destroyed before the partition root because a
+		// cgroup cannot be removed while it still has child cgroups.
+		require.Len(t, fake.destroyed, 3)
+		gotOrder := make([]string, 0, len(fake.destroyed))
+		for _, c := range fake.destroyed {
+			gotOrder = append(gotOrder, c.Name.ToCgroupfs())
+		}
+		assert.Equal(t, []string{
+			"/kubepods/system/burstable",
+			"/kubepods/system/besteffort",
+			"/kubepods/system",
+		}, gotOrder)
+	})
+
+	t.Run("does nothing when system partition cgroup does not exist", func(t *testing.T) {
+		fake := &fakeCgroupManager{exists: false}
+		cm := &containerManagerImpl{
+			cgroupManager: fake,
+			cgroupRoot:    cgroupRoot,
+		}
+
+		cm.cleanupSystemPartitionCgroup(logger)
+
+		assert.Empty(t, fake.destroyed)
+	})
+
+	// The computed system partition root must match the documented layout.
+	assert.Equal(t, "/kubepods/system", systemRoot.ToCgroupfs())
+}

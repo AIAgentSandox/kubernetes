@@ -187,11 +187,11 @@ User Pods:        Capacity - kubeReserved - systemReserved - systemPartition.mem
 **Files:**
 - Modify: `pkg/kubelet/cm/container_manager_linux.go`
 
-- [ ] Extend orphaned pod cgroup discovery to also scan under `kubepods/system/` hierarchy
-- [ ] On feature disable (system partition not configured), treat `kubepods/system/` itself as orphaned for cleanup (reference MemoryQoS KEP cleanup pattern)
-- [ ] Write unit tests: orphaned pod cgroups under system partition are detected
-- [ ] Write unit tests: system partition cgroup cleaned up when feature disabled
-- [ ] Run tests: `go test ./pkg/kubelet/cm/...`
+- [x] Extend orphaned pod cgroup discovery to also scan under `kubepods/system/` hierarchy
+- [x] On feature disable (system partition not configured), treat `kubepods/system/` itself as orphaned for cleanup (reference MemoryQoS KEP cleanup pattern)
+- [x] Write unit tests: orphaned pod cgroups under system partition are detected
+- [x] Write unit tests: system partition cgroup cleaned up when feature disabled
+- [x] Run tests: `go test ./pkg/kubelet/cm/...`
 
 ### Task 7: Add partition memory metrics
 

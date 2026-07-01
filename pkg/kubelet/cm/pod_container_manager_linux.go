@@ -248,11 +248,46 @@ func (m *podContainerManagerImpl) ReduceCPULimits(logger klog.Logger, podCgroup 
 	return m.cgroupManager.ReduceCPULimits(logger, podCgroup)
 }
 
+// systemQOSContainersForScan returns the top level QoS cgroup names under the
+// system partition (kubepods/system). When a system partition is configured the
+// populated systemQOSContainersInfo is returned. Otherwise the locations are
+// derived from the default partition root so that leftover system-partition
+// cgroups are still discovered (and cleaned up) after the NodeSystemPartition
+// feature is disabled or rolled back.
+func (m *podContainerManagerImpl) systemQOSContainersForScan() QOSContainersInfo {
+	if len(m.systemQOSContainersInfo.Guaranteed) > 0 {
+		return m.systemQOSContainersInfo
+	}
+	systemRoot := NewCgroupName(m.qosContainersInfo.Guaranteed, systemPartitionCgroupBaseName)
+	return QOSContainersInfo{
+		Guaranteed: systemRoot,
+		Burstable:  NewCgroupName(systemRoot, strings.ToLower(string(v1.PodQOSBurstable))),
+		BestEffort: NewCgroupName(systemRoot, strings.ToLower(string(v1.PodQOSBestEffort))),
+	}
+}
+
+// qosContainersToScan returns the list of top level QoS cgroups that may hold
+// pod cgroups, across both the default partition (kubepods) and the system
+// partition (kubepods/system). The system partition locations are always
+// included so orphaned pod cgroups are reconciled even after the
+// NodeSystemPartition feature is disabled.
+func (m *podContainerManagerImpl) qosContainersToScan() []CgroupName {
+	system := m.systemQOSContainersForScan()
+	return []CgroupName{
+		m.qosContainersInfo.BestEffort,
+		m.qosContainersInfo.Burstable,
+		m.qosContainersInfo.Guaranteed,
+		system.BestEffort,
+		system.Burstable,
+		system.Guaranteed,
+	}
+}
+
 // IsPodCgroup returns true if the literal cgroupfs name corresponds to a pod
 func (m *podContainerManagerImpl) IsPodCgroup(cgroupfs string) (bool, types.UID) {
 	// convert the literal cgroupfs form to the driver specific value
 	cgroupName := m.cgroupManager.CgroupName(cgroupfs)
-	qosContainersList := [3]CgroupName{m.qosContainersInfo.BestEffort, m.qosContainersInfo.Burstable, m.qosContainersInfo.Guaranteed}
+	qosContainersList := m.qosContainersToScan()
 	basePath := ""
 	for _, qosContainerName := range qosContainersList {
 		// a pod cgroup is a direct child of a qos node, so check if its a match
@@ -281,7 +316,10 @@ func (m *podContainerManagerImpl) GetAllPodsFromCgroups() (map[types.UID]CgroupN
 	logger := klog.TODO()
 	// Map for storing all the found pods on the disk
 	foundPods := make(map[types.UID]CgroupName)
-	qosContainersList := [3]CgroupName{m.qosContainersInfo.BestEffort, m.qosContainersInfo.Burstable, m.qosContainersInfo.Guaranteed}
+	// Scan both the default partition (kubepods) and the system partition
+	// (kubepods/system) QoS cgroups so orphaned pod cgroups in either hierarchy
+	// are discovered for cleanup.
+	qosContainersList := m.qosContainersToScan()
 	// Scan through all the subsystem mounts
 	// and through each QoS cgroup directory for each subsystem mount
 	// If a pod cgroup exists in even a single subsystem mount

@@ -19,9 +19,12 @@ limitations under the License.
 package cm
 
 import (
+	"os"
+	"path"
 	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -104,6 +107,24 @@ func TestIsCgroupPod(t *testing.T) {
 			input:          NewCgroupName(RootCgroupName, "system", "kubelet"),
 			expectedResult: false,
 			expectedUID:    types.UID(""),
+		},
+		{
+			// system partition guaranteed pod (kubepods/system/pod<uid>)
+			input:          NewCgroupName(RootCgroupName, "system", GetPodCgroupNameSuffix(podUID)),
+			expectedResult: true,
+			expectedUID:    podUID,
+		},
+		{
+			// system partition burstable pod (kubepods/system/burstable/pod<uid>)
+			input:          NewCgroupName(NewCgroupName(RootCgroupName, "system"), strings.ToLower(string(v1.PodQOSBurstable)), GetPodCgroupNameSuffix(podUID)),
+			expectedResult: true,
+			expectedUID:    podUID,
+		},
+		{
+			// system partition besteffort pod (kubepods/system/besteffort/pod<uid>)
+			input:          NewCgroupName(NewCgroupName(RootCgroupName, "system"), strings.ToLower(string(v1.PodQOSBestEffort)), GetPodCgroupNameSuffix(podUID)),
+			expectedResult: true,
+			expectedUID:    podUID,
 		},
 		{
 			// contains reserved word "pod" in cgroup name
@@ -293,6 +314,84 @@ func TestGetPodContainerName(t *testing.T) {
 			actualCgroupName, actualLiteralCgroupfs := pcm.GetPodContainerName(tt.args.pod)
 			require.Equalf(t, tt.wantCgroupName, actualCgroupName, "Unexpected cgroup name for pod with UID %s, container resources: %v", tt.args.pod.UID, tt.args.pod.Spec.Containers[0].Resources)
 			require.Equalf(t, tt.wantLiteralCgroupfs, actualLiteralCgroupfs, "Unexpected literal cgroupfs for pod with UID %s, container resources: %v", tt.args.pod.UID, tt.args.pod.Spec.Containers[0].Resources)
+		})
+	}
+}
+
+// TestGetAllPodsFromCgroupsSystemPartition verifies that orphaned pod cgroup
+// discovery scans both the default partition (kubepods) and the system
+// partition (kubepods/system) hierarchies. The system partition is scanned
+// whether or not systemQOSContainersInfo is populated so that leftover pod
+// cgroups are still detected after the feature is disabled.
+func TestGetAllPodsFromCgroupsSystemPartition(t *testing.T) {
+	logger, _ := ktesting.NewTestContext(t)
+	tmpDir := t.TempDir()
+
+	cgroupManager := NewCgroupManager(logger, nil, "cgroupfs")
+
+	kubepods := NewCgroupName(RootCgroupName, "kubepods")
+	defaultQOS := QOSContainersInfo{
+		Guaranteed: kubepods,
+		Burstable:  NewCgroupName(kubepods, strings.ToLower(string(v1.PodQOSBurstable))),
+		BestEffort: NewCgroupName(kubepods, strings.ToLower(string(v1.PodQOSBestEffort))),
+	}
+	systemRoot := NewCgroupName(kubepods, "system")
+	systemQOS := QOSContainersInfo{
+		Guaranteed: systemRoot,
+		Burstable:  NewCgroupName(systemRoot, strings.ToLower(string(v1.PodQOSBurstable))),
+		BestEffort: NewCgroupName(systemRoot, strings.ToLower(string(v1.PodQOSBestEffort))),
+	}
+
+	// pod UID -> parent QoS cgroup where the pod cgroup lives on disk.
+	podPlacements := map[types.UID]CgroupName{
+		"default-guar":  defaultQOS.Guaranteed,
+		"default-burst": defaultQOS.Burstable,
+		"default-be":    defaultQOS.BestEffort,
+		"system-guar":   systemQOS.Guaranteed,
+		"system-burst":  systemQOS.Burstable,
+		"system-be":     systemQOS.BestEffort,
+	}
+	for uid, parent := range podPlacements {
+		podCgroup := NewCgroupName(parent, GetPodCgroupNameSuffix(uid))
+		dir := path.Join(tmpDir, cgroupManager.Name(podCgroup))
+		require.NoError(t, os.MkdirAll(dir, 0o755))
+	}
+
+	testCases := []struct {
+		name                    string
+		systemQOSContainersInfo QOSContainersInfo
+	}{
+		{
+			name:                    "feature enabled (system QoS info populated)",
+			systemQOSContainersInfo: systemQOS,
+		},
+		{
+			name:                    "feature disabled (system QoS info derived from default root)",
+			systemQOSContainersInfo: QOSContainersInfo{},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			pcm := &podContainerManagerImpl{
+				cgroupManager:           cgroupManager,
+				qosContainersInfo:       defaultQOS,
+				systemQOSContainersInfo: tc.systemQOSContainersInfo,
+				subsystems: &CgroupSubsystems{
+					MountPoints: map[string]string{"memory": tmpDir},
+				},
+			}
+
+			foundPods, err := pcm.GetAllPodsFromCgroups()
+			require.NoError(t, err)
+			require.Len(t, foundPods, len(podPlacements))
+
+			for uid, parent := range podPlacements {
+				want := NewCgroupName(parent, GetPodCgroupNameSuffix(uid))
+				got, ok := foundPods[uid]
+				require.Truef(t, ok, "pod %q not discovered", uid)
+				assert.Equalf(t, want.ToCgroupfs(), got.ToCgroupfs(), "unexpected cgroup path for pod %q", uid)
+			}
 		})
 	}
 }

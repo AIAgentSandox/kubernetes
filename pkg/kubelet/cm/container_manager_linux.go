@@ -23,6 +23,7 @@ import (
 	"fmt"
 	"os"
 	"path"
+	"strings"
 	"sync"
 	"time"
 
@@ -115,6 +116,40 @@ func createSystemPartitionCgroup(logger klog.Logger, cgroupManager CgroupManager
 		return fmt.Errorf("failed to create system partition cgroup %v: %w", name, err)
 	}
 	return nil
+}
+
+// cleanupSystemPartitionCgroup removes a leftover kubepods/system cgroup
+// hierarchy when the NodeSystemPartition feature is disabled or rolled back.
+// Pod cgroups under the partition are removed by the normal orphaned-cgroup
+// reconciliation; this cleans up the now-empty QoS sub-cgroups and the
+// partition root. It is best-effort: errors are logged rather than returned so
+// a transient failure (for example while pod cgroups are still being drained)
+// does not block kubelet startup. Cleanup is retried on the next kubelet
+// restart. The QoS sub-cgroups are destroyed before the partition root because
+// a cgroup cannot be removed while it still has child cgroups.
+func (cm *containerManagerImpl) cleanupSystemPartitionCgroup(logger klog.Logger) {
+	systemPartitionCgroupName := NewCgroupName(cm.cgroupRoot, systemPartitionCgroupBaseName)
+	if !cm.cgroupManager.Exists(systemPartitionCgroupName) {
+		return
+	}
+	logger.Info("Cleaning up leftover system partition cgroup", "systemPartitionCgroupName", systemPartitionCgroupName)
+	cgroupsToDestroy := []CgroupName{
+		NewCgroupName(systemPartitionCgroupName, strings.ToLower(string(v1.PodQOSBurstable))),
+		NewCgroupName(systemPartitionCgroupName, strings.ToLower(string(v1.PodQOSBestEffort))),
+		systemPartitionCgroupName,
+	}
+	for _, name := range cgroupsToDestroy {
+		if !cm.cgroupManager.Exists(name) {
+			continue
+		}
+		cgroupConfig := &CgroupConfig{
+			Name:               name,
+			ResourceParameters: &ResourceConfig{},
+		}
+		if err := cm.cgroupManager.Destroy(logger, cgroupConfig); err != nil {
+			logger.Info("Failed to clean up system partition cgroup, will retry on next kubelet restart", "cgroupName", name, "err", err)
+		}
+	}
 }
 
 // A non-user container tracked by the Kubelet.
@@ -604,11 +639,15 @@ func (cm *containerManagerImpl) setupNode(ctx context.Context, activePods Active
 			return err
 		}
 		// Create the kubepods/system partition cgroup before the QoS containers
-		// so that the QoS sub-cgroups can be nested underneath it.
+		// so that the QoS sub-cgroups can be nested underneath it. When the
+		// feature is disabled or rolled back, remove any leftover kubepods/system
+		// hierarchy so the node returns to the default single-partition layout.
 		if len(cm.systemPartitionCgroupName) > 0 {
 			if err := createSystemPartitionCgroup(logger, cm.cgroupManager, cm.systemPartitionCgroupName, cm.SystemPartition); err != nil {
 				return fmt.Errorf("failed to initialize system partition cgroup: %w", err)
 			}
+		} else {
+			cm.cleanupSystemPartitionCgroup(logger)
 		}
 		err = cm.qosContainerManager.Start(ctx, cm.GetNodeAllocatableAbsolute, activePods)
 		if err != nil {

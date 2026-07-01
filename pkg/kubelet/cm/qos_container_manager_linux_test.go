@@ -292,9 +292,10 @@ func TestQoSContainerCgroupWithMemoryReservationPolicyNone(t *testing.T) {
 // CgroupManager. All methods are stubbed so that Start() can
 // complete successfully without using real cgroups.
 type fakeCgroupManager struct {
-	mutex   sync.Mutex
-	created []*CgroupConfig
-	updates []*CgroupConfig
+	mutex     sync.Mutex
+	created   []*CgroupConfig
+	updates   []*CgroupConfig
+	destroyed []*CgroupConfig
 	// exists is the value returned by Exists(). It defaults to false so that
 	// Start() takes the Create() path.
 	exists bool
@@ -322,7 +323,14 @@ func (f *fakeCgroupManager) Create(l klog.Logger, config *CgroupConfig) error {
 	return nil
 }
 
-func (f *fakeCgroupManager) Destroy(l klog.Logger, config *CgroupConfig) error { return nil }
+func (f *fakeCgroupManager) Destroy(l klog.Logger, config *CgroupConfig) error {
+	f.mutex.Lock()
+	defer f.mutex.Unlock()
+
+	copiedConfig := *config
+	f.destroyed = append(f.destroyed, &copiedConfig)
+	return nil
+}
 func (f *fakeCgroupManager) Validate(name CgroupName) error                    { return nil }
 func (f *fakeCgroupManager) Exists(name CgroupName) bool                       { return f.exists }
 func (f *fakeCgroupManager) Name(name CgroupName) string                       { return name.ToCgroupfs() }
