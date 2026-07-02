@@ -19,6 +19,7 @@ package datapol
 import (
 	"fmt"
 	"net/http"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -332,6 +333,47 @@ func TestRedactUnexpectedKind(t *testing.T) {
 	if err := Redact(scalars); err != nil {
 		t.Errorf("unexpected error redacting scalar-only value: %v", err)
 	}
+}
+
+// TestRedactValueNotSettable verifies that redactValue fails closed with an
+// error when handed a value reflection cannot overwrite, rather than silently
+// leaving the sensitive value in place. It also confirms the ability to return
+// an error propagates through the recursive kinds (pointer, interface, slice,
+// map) that wrap such a leaf, and that a settable value still redacts cleanly.
+func TestRedactValueNotSettable(t *testing.T) {
+	// reflect.ValueOf yields non-addressable (and thus non-settable) values, so
+	// each of these leaves cannot be written and must produce an error.
+	notSettable := []struct {
+		name  string
+		value reflect.Value
+	}{
+		{"string leaf", reflect.ValueOf("secret")},
+		{"int leaf", reflect.ValueOf(42)},
+		{"byte slice leaf", reflect.ValueOf([]byte("secret"))},
+		{"string slice leaf", reflect.ValueOf([]string{"secret"})},
+	}
+	for _, tc := range notSettable {
+		t.Run(tc.name+" errors", func(t *testing.T) {
+			if err := redactValue(tc.value, map[visitKey]struct{}{}); err == nil {
+				t.Errorf("expected error redacting non-settable %s, got nil", tc.name)
+			}
+		})
+	}
+
+	// A settable leaf redacts without error, proving the added error plumbing
+	// does not break the ordinary success path.
+	t.Run("settable string redacts", func(t *testing.T) {
+		s := struct {
+			Token string `datapolicy:"token"`
+		}{Token: marker}
+		fv := reflect.ValueOf(&s).Elem().Field(0)
+		if err := redactValue(fv, map[visitKey]struct{}{}); err != nil {
+			t.Fatalf("unexpected error redacting settable string: %v", err)
+		}
+		if s.Token != redacted {
+			t.Errorf("expected token redacted to %q, got %q", redacted, s.Token)
+		}
+	})
 }
 
 // hiddenTagged is an exported struct with a datapolicy-tagged field, used to

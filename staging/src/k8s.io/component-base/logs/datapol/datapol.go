@@ -150,7 +150,9 @@ func redactWalk(v reflect.Value, visited map[visitKey]struct{}) error {
 				// on struct field order. redactValue never re-enters redactWalk
 				// and zeroes structs instead of recursing into them, so its own
 				// cycle detection is self-contained within the fresh set.
-				redactValue(fv, map[visitKey]struct{}{})
+				if err := redactValue(fv, map[visitKey]struct{}{}); err != nil {
+					return err
+				}
 				continue
 			}
 			if !fv.CanSet() {
@@ -272,32 +274,48 @@ func findDatapolicyTag(v reflect.Value, path string, seenTypes map[reflect.Type]
 // byte slices, and string slices are replaced with the "CLASSIFIED" sentinel;
 // maps preserve their keys but have their leaf values redacted; pointers and
 // interfaces are dereferenced; any other scalar is zeroed.
-func redactValue(v reflect.Value, visited map[visitKey]struct{}) {
+//
+// It returns an error if it cannot actually overwrite a value it was asked to
+// redact — for example a leaf that reflection reports as not settable. Every
+// terminal write is guarded so that an un-redactable value fails closed with a
+// descriptive error instead of silently leaking (or only surfacing as a
+// recovered panic).
+func redactValue(v reflect.Value, visited map[visitKey]struct{}) error {
 	switch v.Kind() {
 	case reflect.String:
+		if !v.CanSet() {
+			return notSettableErr(v)
+		}
 		v.SetString(redacted)
+		return nil
 	case reflect.Pointer:
 		// A nil pointer holds no value to redact; leave it nil rather than
 		// materializing an empty object that was not present in the input.
 		if v.IsNil() {
-			return
+			return nil
 		}
 		// Cycle guard: a pointer that (transitively) points back to itself must
 		// not recurse forever. Redaction of the pointee mutates shared storage
 		// in place, so skipping an already-visited pointer loses nothing.
 		if seen(v, visited) {
-			return
+			return nil
 		}
-		redactValue(v.Elem(), visited)
+		return redactValue(v.Elem(), visited)
 	case reflect.Interface:
 		if v.IsNil() {
-			return
+			return nil
 		}
 		ev := v.Elem()
 		cp := reflect.New(ev.Type()).Elem()
 		cp.Set(ev)
-		redactValue(cp, visited)
+		if err := redactValue(cp, visited); err != nil {
+			return err
+		}
+		if !v.CanSet() {
+			return notSettableErr(v)
+		}
 		v.Set(cp)
+		return nil
 	case reflect.Slice:
 		switch v.Type().Elem().Kind() {
 		case reflect.Uint8:
@@ -306,48 +324,76 @@ func redactValue(v reflect.Value, visited map[visitKey]struct{}) {
 			// short-circuited by the seen() cycle guard: two tagged fields (or
 			// two map values) that alias the same slice each need their own
 			// replacement, otherwise the second alias leaks its original value.
+			if !v.CanSet() {
+				return notSettableErr(v)
+			}
 			v.SetBytes([]byte(redacted))
+			return nil
 		case reflect.String:
 			// []string (or a named type with string elements) — terminal
 			// replacement; same rationale as []byte above, so no seen() guard.
+			if !v.CanSet() {
+				return notSettableErr(v)
+			}
 			s := reflect.MakeSlice(v.Type(), 1, 1)
 			s.Index(0).SetString(redacted)
 			v.Set(s)
+			return nil
 		default:
 			// Recursive slice: redaction mutates each element in place through
 			// the shared backing array, so a cycle guard is both safe (aliases
 			// already share the mutation) and necessary (a self-referential
 			// slice would otherwise recurse forever).
 			if seen(v, visited) {
-				return
+				return nil
 			}
 			for i := 0; i < v.Len(); i++ {
-				redactValue(v.Index(i), visited)
+				if err := redactValue(v.Index(i), visited); err != nil {
+					return err
+				}
 			}
+			return nil
 		}
 	case reflect.Array:
 		for i := 0; i < v.Len(); i++ {
-			redactValue(v.Index(i), visited)
+			if err := redactValue(v.Index(i), visited); err != nil {
+				return err
+			}
 		}
+		return nil
 	case reflect.Map:
 		// Cycle guard: a map reachable from its own values must not recurse
 		// forever. Values are rewritten via SetMapIndex on the shared map, so
 		// skipping an already-visited map loses nothing.
 		if seen(v, visited) {
-			return
+			return nil
 		}
 		iter := v.MapRange()
 		for iter.Next() {
 			mv := iter.Value()
 			cp := reflect.New(mv.Type()).Elem()
 			cp.Set(mv)
-			redactValue(cp, visited)
+			if err := redactValue(cp, visited); err != nil {
+				return err
+			}
 			v.SetMapIndex(iter.Key(), cp)
 		}
+		return nil
 	default:
 		// Numbers, bools, and other scalars: clear the value.
+		if !v.CanSet() {
+			return notSettableErr(v)
+		}
 		v.Set(reflect.Zero(v.Type()))
+		return nil
 	}
+}
+
+// notSettableErr reports that reflection cannot overwrite v, so the
+// datapolicy-tagged value it holds cannot be redacted and redaction must fail
+// closed rather than leak the value.
+func notSettableErr(v reflect.Value) error {
+	return fmt.Errorf("cannot redact datapolicy-tagged value of kind %s: reflection reports it is not settable", v.Kind())
 }
 
 // Verify returns a list of the datatypes contained in the argument that can be
