@@ -1,4 +1,4 @@
-//go:build windows
+//go:build !linux
 
 /*
 Copyright The Kubernetes Authors.
@@ -20,8 +20,8 @@ package eviction
 
 import "fmt"
 
-// readPartitionMemoryUsage is unsupported on Windows; the node system partition
-// is a Linux cgroup feature.
+// readPartitionMemoryUsage is unsupported on non-Linux platforms; the node
+// system partition is a Linux cgroup feature.
 func readPartitionMemoryUsage(cgroupPath string) (uint64, error) {
 	return 0, fmt.Errorf("system partition memory monitoring is not supported on this platform")
 }
