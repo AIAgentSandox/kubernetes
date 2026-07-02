@@ -334,6 +334,92 @@ func TestRedactUnexpectedKind(t *testing.T) {
 	}
 }
 
+// hiddenTagged is an exported struct with a datapolicy-tagged field, used to
+// nest tags below unexported (unsettable) fields.
+type hiddenTagged struct {
+	Token string `datapolicy:"token"`
+}
+
+// directUnexportedTag carries a datapolicy tag directly on an unexported field.
+// Reflection cannot overwrite it, so Redact must fail closed.
+type directUnexportedTag struct {
+	secret string `datapolicy:"password"`
+}
+
+// taggedBehindUnexported nests a tagged field below an unexported struct field.
+// Reflection cannot set through the unexported field, so Redact must error.
+type taggedBehindUnexported struct {
+	inner hiddenTagged
+}
+
+// taggedInUnexportedMap hides a tagged struct inside an unexported map value,
+// exercising the map branch of the read-only tag scan.
+type taggedInUnexportedMap struct {
+	m map[string]hiddenTagged
+}
+
+// taggedInUnexportedInterface hides a tagged struct inside an unexported
+// interface field, exercising the interface branch of the read-only tag scan.
+type taggedInUnexportedInterface struct {
+	v interface{}
+}
+
+// unexportedNoTags has unexported fields — including interface and map kinds a
+// mutating walk could not traverse — but no datapolicy tags anywhere, so Redact
+// must succeed without error and without panicking.
+type unexportedNoTags struct {
+	data  interface{}
+	items map[string]string
+	name  string
+}
+
+// TestRedactUnexportedTaggedField verifies Redact fails closed when a
+// datapolicy-tagged field is reachable only through an unexported field that
+// reflection cannot overwrite, while still succeeding on unexported subtrees
+// that carry no tags.
+func TestRedactUnexportedTaggedField(t *testing.T) {
+	errorCases := []struct {
+		name  string
+		value interface{}
+	}{{
+		name:  "tag directly on unexported field",
+		value: &directUnexportedTag{secret: marker},
+	}, {
+		name:  "tag nested below an unexported struct field",
+		value: &taggedBehindUnexported{inner: hiddenTagged{Token: marker}},
+	}, {
+		name:  "tag hidden in an unexported map value",
+		value: &taggedInUnexportedMap{m: map[string]hiddenTagged{"k": {Token: marker}}},
+	}, {
+		name:  "tag hidden in an unexported interface value",
+		value: &taggedInUnexportedInterface{v: hiddenTagged{Token: marker}},
+	}, {
+		name:  "tag hidden behind a pointer in an unexported interface value",
+		value: &taggedInUnexportedInterface{v: &hiddenTagged{Token: marker}},
+	}}
+	for _, tc := range errorCases {
+		t.Run(tc.name, func(t *testing.T) {
+			if err := Redact(tc.value); err == nil {
+				t.Errorf("expected error redacting %q, got nil", tc.name)
+			}
+		})
+	}
+
+	// Unexported fields with no datapolicy tags anywhere: there is nothing to
+	// redact, so Redact must succeed without error and without panicking even
+	// though the fields are unsettable interface and map kinds.
+	t.Run("unexported subtree with no tags succeeds", func(t *testing.T) {
+		v := &unexportedNoTags{
+			data:  &redactNoTags{A: "a", B: 1, C: map[string]string{"k": "v"}},
+			items: map[string]string{"k": "v"},
+			name:  "public",
+		}
+		if err := Redact(v); err != nil {
+			t.Errorf("unexpected error redacting unexported tag-free value: %v", err)
+		}
+	})
+}
+
 // TestRedactNilAndNonPointer verifies Redact does not panic on inputs it cannot
 // mutate.
 func TestRedactNilAndNonPointer(t *testing.T) {
