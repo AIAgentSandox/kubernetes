@@ -105,7 +105,11 @@ func Delete(name string) {
 	delete(configs, name)
 }
 
-// Set sets the ComponentConfig for this Config.
+// Set sets the ComponentConfig for this Config. It stores a redacted deep copy
+// so that any field tagged with `datapolicy` (e.g. credentials) is not served
+// over the "/configz" endpoint. Redaction happens once here rather than on
+// every request, and the caller's object is left unmodified. It returns an
+// error if the value cannot be redacted.
 func (v *Config) Set(val runtime.Object) error {
 	configsGuard.Lock()
 	defer configsGuard.Unlock()
@@ -122,23 +126,19 @@ func (v *Config) Set(val runtime.Object) error {
 	if gvk.Version == runtime.APIVersionInternal {
 		return fmt.Errorf("val must specify an external version")
 	}
-	v.val = val
+	redacted := val.DeepCopyObject()
+	if err := datapol.Redact(redacted); err != nil {
+		return fmt.Errorf("failed to redact sensitive fields: %w", err)
+	}
+	v.val = redacted
 	return nil
 }
 
-// MarshalJSON marshals the ComponentConfig as JSON data, redacting any field
-// tagged with `datapolicy` (e.g. credentials) so secrets are not served over
-// the "/configz" endpoint. It operates on a deep copy so the registered config
-// is left unmodified.
+// MarshalJSON marshals the already-redacted ComponentConfig as JSON data. The
+// value was redacted once in Set, so no field tagged with `datapolicy` (e.g.
+// credentials) is served over the "/configz" endpoint.
 func (v *Config) MarshalJSON() ([]byte, error) {
-	if v.val == nil {
-		return json.Marshal(v.val)
-	}
-	redacted := v.val.DeepCopyObject()
-	if err := datapol.Redact(redacted); err != nil {
-		return nil, fmt.Errorf("failed to redact sensitive fields: %w", err)
-	}
-	return json.Marshal(redacted)
+	return json.Marshal(v.val)
 }
 
 func handle(w http.ResponseWriter, r *http.Request) {
