@@ -51,8 +51,7 @@ func Redact(obj interface{}) (retErr error) {
 		}
 		v = v.Elem()
 	}
-	redactWalk(v, map[visitKey]struct{}{})
-	return nil
+	return redactWalk(v, map[visitKey]struct{}{})
 }
 
 // visitKey identifies a value already visited during a walk. ptr is the value's
@@ -99,20 +98,23 @@ func seen(v reflect.Value, visited map[visitKey]struct{}) bool {
 }
 
 // redactWalk traverses untagged values looking for struct fields carrying a
-// datapolicy tag. When it finds one it hands the field to redactValue.
-func redactWalk(v reflect.Value, visited map[visitKey]struct{}) {
+// datapolicy tag. When it finds one it hands the field to redactValue. It
+// returns an error if it encounters a value of a kind it does not know how to
+// traverse, so an unexpected shape fails closed rather than silently passing a
+// value that could hide an unredacted datapolicy-tagged field.
+func redactWalk(v reflect.Value, visited map[visitKey]struct{}) error {
 	if seen(v, visited) {
-		return
+		return nil
 	}
 	switch v.Kind() {
 	case reflect.Pointer:
 		if v.IsNil() {
-			return
+			return nil
 		}
-		redactWalk(v.Elem(), visited)
+		return redactWalk(v.Elem(), visited)
 	case reflect.Interface:
 		if v.IsNil() {
-			return
+			return nil
 		}
 		// An interface's Elem() is not addressable, so walking it directly would
 		// leave any nested tagged fields unset (CanSet is false). Walk a settable
@@ -121,10 +123,13 @@ func redactWalk(v reflect.Value, visited map[visitKey]struct{}) {
 		ev := v.Elem()
 		cp := reflect.New(ev.Type()).Elem()
 		cp.Set(ev)
-		redactWalk(cp, visited)
+		if err := redactWalk(cp, visited); err != nil {
+			return err
+		}
 		if v.CanSet() {
 			v.Set(cp)
 		}
+		return nil
 	case reflect.Struct:
 		t := v.Type()
 		for i := 0; i < t.NumField(); i++ {
@@ -146,12 +151,18 @@ func redactWalk(v reflect.Value, visited map[visitKey]struct{}) {
 				redactValue(fv, map[visitKey]struct{}{})
 				continue
 			}
-			redactWalk(fv, visited)
+			if err := redactWalk(fv, visited); err != nil {
+				return err
+			}
 		}
+		return nil
 	case reflect.Slice, reflect.Array:
 		for i := 0; i < v.Len(); i++ {
-			redactWalk(v.Index(i), visited)
+			if err := redactWalk(v.Index(i), visited); err != nil {
+				return err
+			}
 		}
+		return nil
 	case reflect.Map:
 		iter := v.MapRange()
 		for iter.Next() {
@@ -160,9 +171,27 @@ func redactWalk(v reflect.Value, visited map[visitKey]struct{}) {
 			mv := iter.Value()
 			cp := reflect.New(mv.Type()).Elem()
 			cp.Set(mv)
-			redactWalk(cp, visited)
+			if err := redactWalk(cp, visited); err != nil {
+				return err
+			}
 			v.SetMapIndex(iter.Key(), cp)
 		}
+		return nil
+	case reflect.Bool,
+		reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
+		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr,
+		reflect.Float32, reflect.Float64,
+		reflect.Complex64, reflect.Complex128,
+		reflect.String:
+		// Scalar leaf: it carries no datapolicy-tagged fields beneath it, so
+		// there is nothing to walk. A scalar reached here is untagged (tagged
+		// fields are handed to redactValue by the struct case above).
+		return nil
+	default:
+		// Chan, Func, UnsafePointer, Invalid, and any future kind we do not know
+		// how to traverse. Fail closed: error rather than silently passing a
+		// value that could hide an unredacted datapolicy-tagged field.
+		return fmt.Errorf("cannot redact value of unexpected kind %s", v.Kind())
 	}
 }
 

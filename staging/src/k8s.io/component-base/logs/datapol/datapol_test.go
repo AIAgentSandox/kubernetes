@@ -307,6 +307,33 @@ func TestRedact(t *testing.T) {
 	}
 }
 
+// TestRedactUnexpectedKind verifies that walking a value of a kind the redactor
+// does not know how to traverse (e.g. a func) fails closed with an error rather
+// than silently passing, while ordinary scalar-only inputs succeed.
+func TestRedactUnexpectedKind(t *testing.T) {
+	// A func-typed exported field is an unhandled kind and must produce an error.
+	unexpected := &struct {
+		Fn func()
+	}{Fn: func() {}}
+	if err := Redact(unexpected); err == nil {
+		t.Errorf("expected error redacting value of unexpected kind, got nil")
+	}
+
+	// A chan-typed exported field is likewise unhandled and must error.
+	unexpectedChan := &struct {
+		Ch chan int
+	}{Ch: make(chan int)}
+	if err := Redact(unexpectedChan); err == nil {
+		t.Errorf("expected error redacting value containing a channel, got nil")
+	}
+
+	// Scalar-only input has no unhandled kinds and must succeed without error.
+	scalars := &redactNoTags{A: "a", B: 1, C: map[string]string{"k": "v"}}
+	if err := Redact(scalars); err != nil {
+		t.Errorf("unexpected error redacting scalar-only value: %v", err)
+	}
+}
+
 // TestRedactNilAndNonPointer verifies Redact does not panic on inputs it cannot
 // mutate.
 func TestRedactNilAndNonPointer(t *testing.T) {
