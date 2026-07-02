@@ -277,7 +277,10 @@ func (m *managerImpl) IsUnderPartitionMemoryPressure() bool {
 // partition memory eviction threshold is currently met. The recorded signal is
 // consumed by partition-scoped eviction targeting.
 func (m *managerImpl) synchronizePartitionMemory(logger klog.Logger) {
-	if m.systemPartition == nil || m.systemPartition.MemoryLimit == nil {
+	if m.systemPartition == nil || m.systemPartition.MemoryLimit == nil || m.systemPartition.CgroupPath == "" {
+		// An empty CgroupPath would resolve to the memory cgroup root, causing
+		// whole-node memory usage to be mistaken for partition usage. Only
+		// monitor when the partition cgroup path is known.
 		return
 	}
 

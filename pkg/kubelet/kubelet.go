@@ -544,15 +544,23 @@ func NewMainKubelet(ctx context.Context,
 		PodCgroupRoot:            kubeDeps.ContainerManager.GetPodCgroupRoot(),
 	}
 	if utilfeature.DefaultFeatureGate.Enabled(features.NodeSystemPartition) && len(kubeCfg.SystemPartition.Namespaces) > 0 {
-		memoryLimit := kubeCfg.SystemPartition.MemoryLimit
-		evictionConfig.SystemPartition = &eviction.SystemPartitionConfig{
-			MemoryLimit: &memoryLimit,
-			// Use the driver-adapted cgroupfs path derived from the same CgroupName
-			// the container manager uses to create the partition. Concatenating
-			// "/system" onto GetPodCgroupRoot() would be wrong under the systemd
-			// cgroup driver (the child is kubepods-system.slice, not system).
-			CgroupPath: kubeDeps.ContainerManager.GetSystemPartitionCgroupRoot(),
-			Namespaces: sets.New(kubeCfg.SystemPartition.Namespaces...),
+		// Use the driver-adapted cgroupfs path derived from the same CgroupName
+		// the container manager uses to create the partition. Concatenating
+		// "/system" onto GetPodCgroupRoot() would be wrong under the systemd
+		// cgroup driver (the child is kubepods-system.slice, not system).
+		//
+		// The container manager only creates the partition cgroup when QoS
+		// cgroups are enabled; GetSystemPartitionCgroupRoot returns "" otherwise.
+		// Only wire up partition-scoped eviction when the partition cgroup
+		// actually exists, so the monitoring loop never reads the memory cgroup
+		// root (an empty path) and mistakes whole-node usage for partition usage.
+		if systemPartitionCgroupPath := kubeDeps.ContainerManager.GetSystemPartitionCgroupRoot(); systemPartitionCgroupPath != "" {
+			memoryLimit := kubeCfg.SystemPartition.MemoryLimit
+			evictionConfig.SystemPartition = &eviction.SystemPartitionConfig{
+				MemoryLimit: &memoryLimit,
+				CgroupPath:  systemPartitionCgroupPath,
+				Namespaces:  sets.New(kubeCfg.SystemPartition.Namespaces...),
+			}
 		}
 	}
 
