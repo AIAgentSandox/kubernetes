@@ -299,6 +299,9 @@ type fakeCgroupManager struct {
 	// exists is the value returned by Exists(). It defaults to false so that
 	// Start() takes the Create() path.
 	exists bool
+	// systemd controls whether Name() returns the systemd .slice form. It
+	// defaults to false (cgroupfs form).
+	systemd bool
 }
 
 // Update() is the observation point for this test.
@@ -333,7 +336,12 @@ func (f *fakeCgroupManager) Destroy(l klog.Logger, config *CgroupConfig) error {
 }
 func (f *fakeCgroupManager) Validate(name CgroupName) error                    { return nil }
 func (f *fakeCgroupManager) Exists(name CgroupName) bool                       { return f.exists }
-func (f *fakeCgroupManager) Name(name CgroupName) string                       { return name.ToCgroupfs() }
+func (f *fakeCgroupManager) Name(name CgroupName) string {
+	if f.systemd {
+		return name.ToSystemd()
+	}
+	return name.ToCgroupfs()
+}
 func (f *fakeCgroupManager) CgroupName(name string) CgroupName {
 	return ParseCgroupfsToCgroupName(name)
 }

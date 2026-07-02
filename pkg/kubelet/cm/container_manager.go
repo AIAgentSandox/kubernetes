@@ -120,6 +120,12 @@ type ContainerManager interface {
 	// GetPodCgroupRoot returns the cgroup which contains all pods.
 	GetPodCgroupRoot() string
 
+	// GetSystemPartitionCgroupRoot returns the literal cgroupfs value (driver
+	// adapted, e.g. systemd .slice form) for the kubepods/system partition
+	// cgroup, or an empty string when the NodeSystemPartition feature is not
+	// enabled or no system partition is configured.
+	GetSystemPartitionCgroupRoot() string
+
 	// GetPluginRegistrationHandlers returns a set of plugin registration handlers
 	// The pluginwatcher's Handlers allow to have a single module for handling
 	// registration.

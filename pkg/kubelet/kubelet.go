@@ -547,8 +547,12 @@ func NewMainKubelet(ctx context.Context,
 		memoryLimit := kubeCfg.SystemPartition.MemoryLimit
 		evictionConfig.SystemPartition = &eviction.SystemPartitionConfig{
 			MemoryLimit: &memoryLimit,
-			CgroupPath:  kubeDeps.ContainerManager.GetPodCgroupRoot() + "/system",
-			Namespaces:  sets.New(kubeCfg.SystemPartition.Namespaces...),
+			// Use the driver-adapted cgroupfs path derived from the same CgroupName
+			// the container manager uses to create the partition. Concatenating
+			// "/system" onto GetPodCgroupRoot() would be wrong under the systemd
+			// cgroup driver (the child is kubepods-system.slice, not system).
+			CgroupPath: kubeDeps.ContainerManager.GetSystemPartitionCgroupRoot(),
+			Namespaces: sets.New(kubeCfg.SystemPartition.Namespaces...),
 		}
 	}
 

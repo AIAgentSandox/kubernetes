@@ -182,3 +182,32 @@ func TestCleanupSystemPartitionCgroup(t *testing.T) {
 	// The computed system partition root must match the documented layout.
 	assert.Equal(t, "/kubepods/system", systemRoot.ToCgroupfs())
 }
+
+func TestGetSystemPartitionCgroupRoot(t *testing.T) {
+	cgroupRoot := NewCgroupName(ParseCgroupfsToCgroupName("/"), defaultNodeAllocatableCgroupName)
+	systemPartitionCgroupName := NewCgroupName(cgroupRoot, systemPartitionCgroupBaseName)
+
+	t.Run("returns empty string when no system partition is configured", func(t *testing.T) {
+		cm := &containerManagerImpl{cgroupManager: &fakeCgroupManager{}}
+		assert.Empty(t, cm.GetSystemPartitionCgroupRoot())
+	})
+
+	t.Run("returns cgroupfs path under the cgroupfs driver", func(t *testing.T) {
+		cm := &containerManagerImpl{
+			cgroupManager:             &fakeCgroupManager{},
+			systemPartitionCgroupName: systemPartitionCgroupName,
+		}
+		assert.Equal(t, "/kubepods/system", cm.GetSystemPartitionCgroupRoot())
+	})
+
+	t.Run("returns systemd slice path under the systemd driver", func(t *testing.T) {
+		cm := &containerManagerImpl{
+			cgroupManager:             &fakeCgroupManager{systemd: true},
+			systemPartitionCgroupName: systemPartitionCgroupName,
+		}
+		// Under systemd the partition child is expanded to a .slice name, not a
+		// literal "system" segment appended to the pod cgroup root. This is the
+		// path the eviction manager reads partition memory usage from.
+		assert.Equal(t, "/kubepods.slice/kubepods-system.slice", cm.GetSystemPartitionCgroupRoot())
+	})
+}

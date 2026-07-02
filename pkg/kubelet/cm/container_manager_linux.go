@@ -719,6 +719,19 @@ func (cm *containerManagerImpl) GetPodCgroupRoot() string {
 	return cm.cgroupManager.Name(cm.cgroupRoot)
 }
 
+// GetSystemPartitionCgroupRoot returns the literal cgroupfs value for the
+// kubepods/system partition cgroup, driver adapted (systemd .slice form when the
+// systemd driver is in use), or an empty string when no system partition is
+// configured. Deriving it from the same CgroupName used to create the cgroup
+// keeps the eviction reader's path consistent with the created hierarchy across
+// both cgroup drivers.
+func (cm *containerManagerImpl) GetSystemPartitionCgroupRoot() string {
+	if len(cm.systemPartitionCgroupName) == 0 {
+		return ""
+	}
+	return cm.cgroupManager.Name(cm.systemPartitionCgroupName)
+}
+
 func (cm *containerManagerImpl) GetMountedSubsystems() *CgroupSubsystems {
 	return cm.subsystems
 }
