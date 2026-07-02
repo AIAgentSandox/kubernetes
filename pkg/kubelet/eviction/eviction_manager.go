@@ -289,6 +289,13 @@ func (m *managerImpl) synchronizePartitionMemory(logger klog.Logger) {
 	usage, err := m.partitionMemoryReader(m.systemPartition.CgroupPath)
 	if err != nil {
 		logger.V(3).Info("Eviction manager: failed to read system partition memory usage", "cgroupPath", m.systemPartition.CgroupPath, "err", err)
+		// Clear any previously recorded pressure so a stale reading does not keep
+		// driving partition-scoped eviction without a fresh signal. This mirrors
+		// node-level eviction, which recomputes its signals from scratch each
+		// cycle rather than persisting pressure across failed observations.
+		m.Lock()
+		m.partitionMemoryPressure = false
+		m.Unlock()
 		return
 	}
 	metrics.PartitionMemoryUsage.WithLabelValues(systemPartitionName).Set(float64(usage))

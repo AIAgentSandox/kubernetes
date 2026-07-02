@@ -26,8 +26,8 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/client-go/tools/record"
-	statsapi "k8s.io/kubelet/pkg/apis/stats/v1alpha1"
 	"k8s.io/klog/v2/ktesting"
+	statsapi "k8s.io/kubelet/pkg/apis/stats/v1alpha1"
 	evictionapi "k8s.io/kubernetes/pkg/kubelet/eviction/api"
 	testingclock "k8s.io/utils/clock/testing"
 	"k8s.io/utils/ptr"
@@ -354,6 +354,7 @@ func TestSynchronizePartitionMemory(t *testing.T) {
 		systemPartition *SystemPartitionConfig
 		usage           uint64
 		readErr         error
+		initialPressure bool
 		wantPressure    bool
 	}{
 		{
@@ -380,13 +381,24 @@ func TestSynchronizePartitionMemory(t *testing.T) {
 			wantPressure: true,
 		},
 		{
-			name: "read error - pressure not updated",
+			name: "read error - pressure cleared when previously false",
 			systemPartition: &SystemPartitionConfig{
 				MemoryLimit: resource.NewQuantity(1000, resource.BinarySI),
 				CgroupPath:  "/kubepods/system",
 			},
-			readErr:      fmt.Errorf("cgroup not found"),
-			wantPressure: false,
+			readErr:         fmt.Errorf("cgroup not found"),
+			initialPressure: false,
+			wantPressure:    false,
+		},
+		{
+			name: "read error - stale pressure cleared when previously true",
+			systemPartition: &SystemPartitionConfig{
+				MemoryLimit: resource.NewQuantity(1000, resource.BinarySI),
+				CgroupPath:  "/kubepods/system",
+			},
+			readErr:         fmt.Errorf("cgroup not found"),
+			initialPressure: true,
+			wantPressure:    false,
 		},
 	}
 
@@ -399,6 +411,7 @@ func TestSynchronizePartitionMemory(t *testing.T) {
 					return tc.usage, tc.readErr
 				},
 			}
+			m.partitionMemoryPressure = tc.initialPressure
 			m.synchronizePartitionMemory(logger)
 			if got := m.IsUnderPartitionMemoryPressure(); got != tc.wantPressure {
 				t.Errorf("IsUnderPartitionMemoryPressure() = %v, want %v", got, tc.wantPressure)
