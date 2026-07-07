@@ -17,7 +17,13 @@ limitations under the License.
 package eviction
 
 import (
+	"context"
+
 	"k8s.io/apimachinery/pkg/api/resource"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	statsapi "k8s.io/kubelet/pkg/apis/stats/v1alpha1"
+	"k8s.io/kubernetes/pkg/kubelet/server/stats"
+	"k8s.io/utils/clock"
 )
 
 // PartitionStats holds the resource usage stats for a single partition.
@@ -78,4 +84,62 @@ func (p *cgroupPartitionStatsProvider) GetPartitionStats() (*PartitionStats, err
 		MemoryUsageBytes: usage,
 		MemoryLimitBytes: limitBytes,
 	}, nil
+}
+
+// partitionSummaryProvider adapts a PartitionStatsProvider into the
+// stats.SummaryProvider interface expected by the eviction control loop. It
+// produces a minimal Summary that carries only the partition's memory usage,
+// shaped so that makeSignalObservations derives a memory.available signal whose
+// available value is (limit - usage) and whose capacity is the partition limit.
+// This lets a partition-scoped managerImpl reuse the node-level eviction logic
+// unchanged.
+type partitionSummaryProvider struct {
+	// statsProvider reads the partition's current memory usage and limit.
+	statsProvider PartitionStatsProvider
+	// clock timestamps each observation so the eviction loop can detect updated
+	// stats between synchronize cycles.
+	clock clock.Clock
+}
+
+var _ stats.SummaryProvider = &partitionSummaryProvider{}
+
+// newPartitionSummaryProvider returns a SummaryProvider backed by the given
+// partition stats provider.
+func newPartitionSummaryProvider(statsProvider PartitionStatsProvider, clock clock.Clock) *partitionSummaryProvider {
+	return &partitionSummaryProvider{
+		statsProvider: statsProvider,
+		clock:         clock,
+	}
+}
+
+// Get returns a Summary populated with the partition's memory stats. The
+// available bytes are computed as limit minus usage (never negative), and the
+// working set bytes carry the current usage, so that available+workingSet equals
+// the partition limit — matching the semantics the eviction logic expects.
+func (p *partitionSummaryProvider) Get(ctx context.Context, updateStats bool) (*statsapi.Summary, error) {
+	partitionStats, err := p.statsProvider.GetPartitionStats()
+	if err != nil {
+		return nil, err
+	}
+	workingSetBytes := partitionStats.MemoryUsageBytes
+	var availableBytes uint64
+	if partitionStats.MemoryLimitBytes > partitionStats.MemoryUsageBytes {
+		availableBytes = partitionStats.MemoryLimitBytes - partitionStats.MemoryUsageBytes
+	}
+	now := metav1.NewTime(p.clock.Now())
+	return &statsapi.Summary{
+		Node: statsapi.NodeStats{
+			Memory: &statsapi.MemoryStats{
+				Time:            now,
+				AvailableBytes:  &availableBytes,
+				WorkingSetBytes: &workingSetBytes,
+			},
+		},
+	}, nil
+}
+
+// GetCPUAndMemoryStats returns the same partition memory Summary as Get. The
+// partition manager only evaluates memory signals.
+func (p *partitionSummaryProvider) GetCPUAndMemoryStats(ctx context.Context) (*statsapi.Summary, error) {
+	return p.Get(ctx, false)
 }

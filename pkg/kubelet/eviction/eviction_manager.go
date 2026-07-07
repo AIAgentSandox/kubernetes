@@ -106,6 +106,11 @@ type managerImpl struct {
 	thresholdsLastUpdated time.Time
 	// whether can support local storage capacity isolation
 	localStorageCapacityIsolation bool
+	// partitionName identifies the partition this manager is scoped to. It is
+	// empty for the node-wide eviction manager and set to the partition name
+	// (e.g. "system") for a partition-scoped manager created via
+	// NewPartitionManager. It is used for partition metrics labels and logging.
+	partitionName string
 	// systemPartition holds the configuration for the node system partition. It
 	// is nil unless the NodeSystemPartition feature is enabled and a system
 	// partition is configured.
@@ -152,6 +157,56 @@ func NewManager(
 		partitionMemoryReader:         readPartitionMemoryUsage,
 	}
 	return manager, manager
+}
+
+// noopImageGC is an ImageGC that performs no work. Partition-scoped eviction
+// managers do not reclaim images, so they use this instead of the node-level
+// image garbage collector.
+type noopImageGC struct{}
+
+func (noopImageGC) DeleteUnusedImages(ctx context.Context) error { return nil }
+
+// noopContainerGC is a ContainerGC that performs no work. Partition-scoped
+// eviction managers do not reclaim containers at the node level, so they use
+// this instead of the node-level container garbage collector.
+type noopContainerGC struct{}
+
+func (noopContainerGC) DeleteAllUnusedContainers(ctx context.Context) error { return nil }
+
+// NewPartitionManager returns a Manager configured to evict pods for a single
+// partition (e.g. the node system partition). Unlike the node-wide manager, it
+// reads its memory usage from a PartitionStatsProvider scoped to the partition
+// cgroup, does not reclaim node-level resources (images/containers), and does
+// not set node conditions — partition pressure is observed and acted upon
+// internally by this manager's own control loop. The provided thresholds are
+// typically the node-level hard memory.available thresholds reused for the
+// partition.
+func NewPartitionManager(
+	partitionName string,
+	statsProvider PartitionStatsProvider,
+	thresholds []evictionapi.Threshold,
+	killPodFunc KillPodFunc,
+	recorder record.EventRecorder,
+	nodeRef *v1.ObjectReference,
+	clock clock.WithTicker,
+) Manager {
+	manager := &managerImpl{
+		clock:       clock,
+		killPodFunc: killPodFunc,
+		imageGC:     noopImageGC{},
+		containerGC: noopContainerGC{},
+		config: Config{
+			Thresholds: thresholds,
+		},
+		recorder:                     recorder,
+		summaryProvider:              newPartitionSummaryProvider(statsProvider, clock),
+		nodeRef:                      nodeRef,
+		nodeConditionsLastObservedAt: nodeConditionsObservedAt{},
+		thresholdsFirstObservedAt:    thresholdsObservedAt{},
+		thresholdNotifiers:           []ThresholdNotifier{},
+		partitionName:                partitionName,
+	}
+	return manager
 }
 
 // Admit rejects a pod if its not safe to admit for node stability.
@@ -243,6 +298,10 @@ func (m *managerImpl) Start(ctx context.Context, diskInfoProvider DiskInfoProvid
 }
 
 // IsUnderMemoryPressure returns true if the node is under memory pressure.
+//
+// TODO(KEP-5894): When multiple partitions are supported, expose partition-level
+// pressure as a node condition or pod condition so schedulers can react to a
+// partition being under memory pressure independently of the node as a whole.
 func (m *managerImpl) IsUnderMemoryPressure() bool {
 	m.RLock()
 	defer m.RUnlock()
