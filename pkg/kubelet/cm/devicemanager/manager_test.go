@@ -2391,24 +2391,24 @@ func TestPluginConnectedSameResourceSameSocketRejected(t *testing.T) {
 		"first PluginConnected for (resource, socketA) must succeed")
 
 	err := manager.PluginConnected(tCtx, resourceName, p2)
-	require.Error(t, err, "second PluginConnected at the same socket must be rejected (I1)")
+	require.Error(t, err, "second PluginConnected at the same socket must be rejected")
 	require.Contains(t, err.Error(), "device plugin already connected",
-		"rejection error must use the documented prefix from manager.go (I1)")
+		"rejection error must use the documented prefix from manager.go")
 	require.Contains(t, err.Error(), socketA,
-		"rejection error must include the offending socket path (I1)")
+		"rejection error must include the offending socket path")
 
 	require.Len(t, manager.endpointStore[resourceName], 1,
-		"endpointStore must still contain exactly one entry after rejection (I1)")
+		"endpointStore must still contain exactly one entry after rejection")
 	stored, ok := manager.endpointStore[resourceName][socketA]
 	require.True(t, ok, "stored entry must be at socketA")
 	storedImpl, ok := stored.e.(*endpointImpl)
 	require.True(t, ok, "stored endpoint must be *endpointImpl")
 	require.Same(t, p1.api, storedImpl.api,
-		"first endpoint's api pointer must survive the rejected second register (I1)")
+		"first endpoint's api pointer must survive the rejected second register")
 	primaryImpl, ok := manager.endpoints[resourceName].e.(*endpointImpl)
 	require.True(t, ok)
 	require.Same(t, p1.api, primaryImpl.api,
-		"primary m.endpoints slot must also still reference the first endpoint (I1)")
+		"primary m.endpoints slot must also still reference the first endpoint")
 }
 
 // TestPluginConnected_SameResourceDifferentSocketsCoexist verifies that two
@@ -2429,7 +2429,7 @@ func TestPluginConnectedSameResourceDifferentSocketsCoexist(t *testing.T) {
 		"two endpoints at different socket paths for the same resource must coexist")
 
 	require.Len(t, manager.endpointStore[resourceName], 2,
-		"endpointStore must record both endpoints (I3 setup)")
+		"endpointStore must record both endpoints")
 	require.Contains(t, manager.endpointStore[resourceName], socketA)
 	require.Contains(t, manager.endpointStore[resourceName], socketB)
 
@@ -2462,18 +2462,18 @@ func TestPluginDisconnectedWrongSocketIsNoop(t *testing.T) {
 	manager.PluginDisconnected(logger, resourceName, socketB)
 
 	require.Len(t, manager.endpointStore[resourceName], 1,
-		"PluginDisconnected for a non-matching socket must not remove the existing entry (I2)")
+		"PluginDisconnected for a non-matching socket must not remove the existing entry")
 	require.Contains(t, manager.endpointStore[resourceName], socketA,
-		"existing socketA entry must survive (I2)")
+		"existing socketA entry must survive")
 	require.True(t, manager.endpoints[resourceName].e.(*endpointImpl).stopTime.IsZero(),
-		"a no-op disconnect must not call setStopTime on the surviving endpoint (I2)")
+		"a no-op disconnect must not call setStopTime on the surviving endpoint")
 	require.Equal(t, 2, manager.healthyDevices[resourceName].Len(),
-		"healthy devices must remain healthy when no endpoint actually disconnected (I2)")
+		"healthy devices must remain healthy when no endpoint actually disconnected")
 
 	// Also exercise the resourceName-unknown branch.
 	manager.PluginDisconnected(logger, "unknown.com/resource", socketA)
 	require.Len(t, manager.endpointStore[resourceName], 1,
-		"PluginDisconnected for an unknown resource must not touch unrelated state (I2)")
+		"PluginDisconnected for an unknown resource must not touch unrelated state")
 }
 
 // TestPluginDisconnected_PromotesSurvivor verifies that when one of multiple
@@ -2509,19 +2509,19 @@ func TestPluginDisconnectedPromotesSurvivor(t *testing.T) {
 	manager.PluginDisconnected(logger, resourceName, socketA)
 
 	require.Len(t, manager.endpointStore[resourceName], 2,
-		"only the disconnected endpoint must be removed from endpointStore (I3)")
+		"only the disconnected endpoint must be removed from endpointStore")
 	require.NotContains(t, manager.endpointStore[resourceName], socketA,
-		"socketA must be gone (I3)")
+		"socketA must be gone")
 	require.Contains(t, manager.endpointStore[resourceName], socketB,
-		"the surviving sibling at socketB must remain in endpointStore (I3)")
+		"the surviving sibling at socketB must remain in endpointStore")
 	require.Contains(t, manager.endpointStore[resourceName], socketC,
-		"the surviving sibling at socketC must remain in endpointStore (I3)")
+		"the surviving sibling at socketC must remain in endpointStore")
 	primaryAfterFirst, ok := manager.endpoints[resourceName].e.(*endpointImpl)
 	require.True(t, ok)
 	require.Contains(t, []string{socketB, socketC}, primaryAfterFirst.socketPath(),
-		"the promoted primary must be one of the two remaining siblings (I3)")
+		"the promoted primary must be one of the two remaining siblings")
 	require.False(t, epA.stopTime.IsZero(),
-		"the removed endpoint must have setStopTime called (I3)")
+		"the removed endpoint must have setStopTime called")
 
 	// Now disconnect epC as well, leaving epB as the only remaining endpoint.
 	// The promote loop has a single candidate, so epB is deterministically
@@ -2529,17 +2529,17 @@ func TestPluginDisconnectedPromotesSurvivor(t *testing.T) {
 	manager.PluginDisconnected(logger, resourceName, socketC)
 
 	require.Len(t, manager.endpointStore[resourceName], 1,
-		"epB must be the only endpoint left in endpointStore (I3)")
+		"epB must be the only endpoint left in endpointStore")
 	require.Contains(t, manager.endpointStore[resourceName], socketB,
-		"epB at socketB must remain in endpointStore (I3)")
+		"epB at socketB must remain in endpointStore")
 	primary, ok := manager.endpoints[resourceName].e.(*endpointImpl)
 	require.True(t, ok)
 	require.Equal(t, socketB, primary.socketPath(),
-		"epB must be the survivor promoted into m.endpoints (I3)")
+		"epB must be the survivor promoted into m.endpoints")
 	require.Equal(t, 1, manager.healthyDevices[resourceName].Len(),
-		"healthy devices must stay healthy when this was NOT the last endpoint (I3)")
+		"healthy devices must stay healthy when this was NOT the last endpoint")
 	require.False(t, epC.stopTime.IsZero(),
-		"the removed endpoint must have setStopTime called (I3)")
+		"the removed endpoint must have setStopTime called")
 }
 
 // TestPluginDisconnected_LastEndpointMarksUnhealthy verifies that when the
@@ -2642,13 +2642,13 @@ func TestSameSocketRaceDisconnectBeforeReconnectAttempt(t *testing.T) {
 	err := manager.PluginConnected(tCtx, resourceName, p2)
 	require.Error(t, err, "second connect without an intervening disconnect must be rejected")
 	require.Contains(t, err.Error(), "device plugin already connected",
-		"rejection error must match the documented prefix (I1)")
+		"rejection error must match the documented prefix")
 
 	// Sanity: the rejected register must not corrupt state.
 	stored, ok := manager.endpointStore[resourceName][socketA]
 	require.True(t, ok)
 	require.Same(t, p1.api, stored.e.(*endpointImpl).api,
-		"rejected register must leave the original endpoint untouched (I1)")
+		"rejected register must leave the original endpoint untouched")
 
 	// Now disconnect the original endpoint and try again — must succeed.
 	manager.PluginDisconnected(logger, resourceName, socketA)
