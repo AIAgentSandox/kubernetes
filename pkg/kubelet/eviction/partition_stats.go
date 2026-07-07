@@ -46,6 +46,11 @@ func PartitionThresholds(thresholds []evictionapi.Threshold) []evictionapi.Thres
 	return []evictionapi.Threshold{threshold}
 }
 
+// partitionMemoryReader reads the current memory usage (in bytes) of the cgroup
+// located at the given cgroupfs path (relative to the memory cgroup mount
+// point). It is defined per-platform so that non-Linux builds compile.
+type partitionMemoryReader func(cgroupPath string) (uint64, error)
+
 // PartitionStats holds the resource usage stats for a single partition.
 type PartitionStats struct {
 	// MemoryUsageBytes is the current memory usage of the partition in bytes.

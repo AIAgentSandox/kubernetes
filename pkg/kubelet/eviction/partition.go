@@ -23,15 +23,6 @@ import (
 	evictionapi "k8s.io/kubernetes/pkg/kubelet/eviction/api"
 )
 
-// systemPartitionName is the value of the "partition" metric label used for the
-// node system partition.
-const systemPartitionName = "system"
-
-// partitionMemoryReader reads the current memory usage (in bytes) of the cgroup
-// located at the given cgroupfs path (relative to the memory cgroup mount
-// point). It is defined per-platform so that non-Linux builds compile.
-type partitionMemoryReader func(cgroupPath string) (uint64, error)
-
 // partitionMemoryAvailable computes the number of bytes available in a partition
 // given the configured memory limit and the current usage. It never returns a
 // negative value.
