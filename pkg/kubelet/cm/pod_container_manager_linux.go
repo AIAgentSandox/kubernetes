@@ -72,6 +72,13 @@ type podContainerManagerImpl struct {
 	// systemNamespaces is the set of namespaces whose pods are placed under the
 	// system partition. It is empty unless a system partition is configured.
 	systemNamespaces sets.Set[string]
+	// partitionCgroupRoots maps each node system partition name to its cgroup
+	// root (for example "system" -> kubepods/system). Orphaned pod cgroup
+	// discovery scans the QoS hierarchies under every root in this map. It always
+	// includes the system partition location so leftover pod cgroups are still
+	// discovered (and cleaned up) after the NodeSystemPartition feature is
+	// disabled or rolled back.
+	partitionCgroupRoots map[string]CgroupName
 }
 
 // Make sure that podContainerManagerImpl implements the PodContainerManager interface
@@ -248,39 +255,38 @@ func (m *podContainerManagerImpl) ReduceCPULimits(logger klog.Logger, podCgroup 
 	return m.cgroupManager.ReduceCPULimits(logger, podCgroup)
 }
 
-// systemQOSContainersForScan returns the top level QoS cgroup names under the
-// system partition (kubepods/system). When a system partition is configured the
-// populated systemQOSContainersInfo is returned. Otherwise the locations are
-// derived from the default partition root so that leftover system-partition
-// cgroups are still discovered (and cleaned up) after the NodeSystemPartition
-// feature is disabled or rolled back.
-func (m *podContainerManagerImpl) systemQOSContainersForScan() QOSContainersInfo {
-	if len(m.systemQOSContainersInfo.Guaranteed) > 0 {
-		return m.systemQOSContainersInfo
+// partitionQOSContainersForScan returns the top level QoS cgroup names under
+// each configured partition root in partitionCgroupRoots. The QoS locations are
+// derived from each partition root so that orphaned pod cgroups in any partition
+// are discovered (and cleaned up), including leftover system-partition cgroups
+// after the NodeSystemPartition feature is disabled or rolled back.
+func (m *podContainerManagerImpl) partitionQOSContainersForScan() []QOSContainersInfo {
+	infos := make([]QOSContainersInfo, 0, len(m.partitionCgroupRoots))
+	for _, root := range m.partitionCgroupRoots {
+		infos = append(infos, QOSContainersInfo{
+			Guaranteed: root,
+			Burstable:  NewCgroupName(root, strings.ToLower(string(v1.PodQOSBurstable))),
+			BestEffort: NewCgroupName(root, strings.ToLower(string(v1.PodQOSBestEffort))),
+		})
 	}
-	systemRoot := NewCgroupName(m.qosContainersInfo.Guaranteed, systemPartitionCgroupBaseName)
-	return QOSContainersInfo{
-		Guaranteed: systemRoot,
-		Burstable:  NewCgroupName(systemRoot, strings.ToLower(string(v1.PodQOSBurstable))),
-		BestEffort: NewCgroupName(systemRoot, strings.ToLower(string(v1.PodQOSBestEffort))),
-	}
+	return infos
 }
 
 // qosContainersToScan returns the list of top level QoS cgroups that may hold
-// pod cgroups, across both the default partition (kubepods) and the system
-// partition (kubepods/system). The system partition locations are always
-// included so orphaned pod cgroups are reconciled even after the
-// NodeSystemPartition feature is disabled.
+// pod cgroups, across the default partition (kubepods) and every partition root
+// in partitionCgroupRoots. The system partition locations are always included so
+// orphaned pod cgroups are reconciled even after the NodeSystemPartition feature
+// is disabled.
 func (m *podContainerManagerImpl) qosContainersToScan() []CgroupName {
-	system := m.systemQOSContainersForScan()
-	return []CgroupName{
+	scan := []CgroupName{
 		m.qosContainersInfo.BestEffort,
 		m.qosContainersInfo.Burstable,
 		m.qosContainersInfo.Guaranteed,
-		system.BestEffort,
-		system.Burstable,
-		system.Guaranteed,
 	}
+	for _, partition := range m.partitionQOSContainersForScan() {
+		scan = append(scan, partition.BestEffort, partition.Burstable, partition.Guaranteed)
+	}
+	return scan
 }
 
 // IsPodCgroup returns true if the literal cgroupfs name corresponds to a pod

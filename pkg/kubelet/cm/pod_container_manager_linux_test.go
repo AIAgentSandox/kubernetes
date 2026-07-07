@@ -19,6 +19,7 @@ limitations under the License.
 package cm
 
 import (
+	"maps"
 	"os"
 	"path"
 	"strings"
@@ -138,6 +139,11 @@ func TestIsCgroupPod(t *testing.T) {
 			cgroupManager:     NewCgroupManager(logger, nil, cgroupDriver),
 			enforceCPULimits:  true,
 			qosContainersInfo: qosContainersInfo,
+			// The system partition location is always scanned (as it is in real
+			// wiring) so leftover system-partition pod cgroups are recognized.
+			partitionCgroupRoots: map[string]CgroupName{
+				"system": NewCgroupName(qosContainersInfo.Guaranteed, "system"),
+			},
 		}
 		for _, testCase := range testCases {
 			// Give the right cgroup structure based on whether systemd is enabled.
@@ -318,65 +324,93 @@ func TestGetPodContainerName(t *testing.T) {
 	}
 }
 
-// TestGetAllPodsFromCgroupsSystemPartition verifies that orphaned pod cgroup
-// discovery scans both the default partition (kubepods) and the system
-// partition (kubepods/system) hierarchies. The system partition is scanned
-// whether or not systemQOSContainersInfo is populated so that leftover pod
-// cgroups are still detected after the feature is disabled.
-func TestGetAllPodsFromCgroupsSystemPartition(t *testing.T) {
+// qosForRoot derives the top level QoS cgroup names under a partition root the
+// same way createQOSContainers does (Guaranteed == root, Burstable/BestEffort as
+// lowercased children).
+func qosForRoot(root CgroupName) QOSContainersInfo {
+	return QOSContainersInfo{
+		Guaranteed: root,
+		Burstable:  NewCgroupName(root, strings.ToLower(string(v1.PodQOSBurstable))),
+		BestEffort: NewCgroupName(root, strings.ToLower(string(v1.PodQOSBestEffort))),
+	}
+}
+
+// TestGetAllPodsFromCgroupsPartitions verifies that orphaned pod cgroup
+// discovery scans the default partition (kubepods) plus every partition root in
+// partitionCgroupRoots. An empty map means only the default partition is
+// scanned, while multiple roots are each scanned so leftover pod cgroups in any
+// partition are discovered.
+func TestGetAllPodsFromCgroupsPartitions(t *testing.T) {
 	logger, _ := ktesting.NewTestContext(t)
-	tmpDir := t.TempDir()
 
 	cgroupManager := NewCgroupManager(logger, nil, "cgroupfs")
 
 	kubepods := NewCgroupName(RootCgroupName, "kubepods")
-	defaultQOS := QOSContainersInfo{
-		Guaranteed: kubepods,
-		Burstable:  NewCgroupName(kubepods, strings.ToLower(string(v1.PodQOSBurstable))),
-		BestEffort: NewCgroupName(kubepods, strings.ToLower(string(v1.PodQOSBestEffort))),
-	}
+	defaultQOS := qosForRoot(kubepods)
 	systemRoot := NewCgroupName(kubepods, "system")
-	systemQOS := QOSContainersInfo{
-		Guaranteed: systemRoot,
-		Burstable:  NewCgroupName(systemRoot, strings.ToLower(string(v1.PodQOSBurstable))),
-		BestEffort: NewCgroupName(systemRoot, strings.ToLower(string(v1.PodQOSBestEffort))),
-	}
+	systemQOS := qosForRoot(systemRoot)
+	// A second, hypothetical partition root to prove the scan iterates the whole
+	// map rather than hardcoding the system partition.
+	otherRoot := NewCgroupName(kubepods, "other")
+	otherQOS := qosForRoot(otherRoot)
 
-	// pod UID -> parent QoS cgroup where the pod cgroup lives on disk.
-	podPlacements := map[types.UID]CgroupName{
+	defaultPods := map[types.UID]CgroupName{
 		"default-guar":  defaultQOS.Guaranteed,
 		"default-burst": defaultQOS.Burstable,
 		"default-be":    defaultQOS.BestEffort,
-		"system-guar":   systemQOS.Guaranteed,
-		"system-burst":  systemQOS.Burstable,
-		"system-be":     systemQOS.BestEffort,
 	}
-	for uid, parent := range podPlacements {
-		podCgroup := NewCgroupName(parent, GetPodCgroupNameSuffix(uid))
-		dir := path.Join(tmpDir, cgroupManager.Name(podCgroup))
-		require.NoError(t, os.MkdirAll(dir, 0o755))
+	systemPods := map[types.UID]CgroupName{
+		"system-guar":  systemQOS.Guaranteed,
+		"system-burst": systemQOS.Burstable,
+		"system-be":    systemQOS.BestEffort,
+	}
+	otherPods := map[types.UID]CgroupName{
+		"other-guar":  otherQOS.Guaranteed,
+		"other-burst": otherQOS.Burstable,
+		"other-be":    otherQOS.BestEffort,
 	}
 
 	testCases := []struct {
-		name                    string
-		systemQOSContainersInfo QOSContainersInfo
+		name                 string
+		partitionCgroupRoots map[string]CgroupName
+		// wantPods is the union of pod placements expected to be discovered.
+		wantPods []map[types.UID]CgroupName
 	}{
 		{
-			name:                    "feature enabled (system QoS info populated)",
-			systemQOSContainersInfo: systemQOS,
+			name:                 "empty map scans only the default partition",
+			partitionCgroupRoots: map[string]CgroupName{},
+			wantPods:             []map[types.UID]CgroupName{defaultPods},
 		},
 		{
-			name:                    "feature disabled (system QoS info derived from default root)",
-			systemQOSContainersInfo: QOSContainersInfo{},
+			name:                 "system partition root scans default and system partitions",
+			partitionCgroupRoots: map[string]CgroupName{"system": systemRoot},
+			wantPods:             []map[types.UID]CgroupName{defaultPods, systemPods},
+		},
+		{
+			name:                 "multiple partition roots are all scanned",
+			partitionCgroupRoots: map[string]CgroupName{"system": systemRoot, "other": otherRoot},
+			wantPods:             []map[types.UID]CgroupName{defaultPods, systemPods, otherPods},
 		},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
+			tmpDir := t.TempDir()
+			// Lay down pod cgroups for every partition on disk, regardless of
+			// which roots the scan is configured with, so we can assert that
+			// only the configured roots are discovered.
+			for _, placements := range []map[types.UID]CgroupName{defaultPods, systemPods, otherPods} {
+				for uid, parent := range placements {
+					podCgroup := NewCgroupName(parent, GetPodCgroupNameSuffix(uid))
+					dir := path.Join(tmpDir, cgroupManager.Name(podCgroup))
+					require.NoError(t, os.MkdirAll(dir, 0o755))
+				}
+			}
+
 			pcm := &podContainerManagerImpl{
-				cgroupManager:           cgroupManager,
-				qosContainersInfo:       defaultQOS,
-				systemQOSContainersInfo: tc.systemQOSContainersInfo,
+				cgroupManager:        cgroupManager,
+				qosContainersInfo:    defaultQOS,
+				partitionCgroupRoots: tc.partitionCgroupRoots,
 				subsystems: &CgroupSubsystems{
 					MountPoints: map[string]string{"memory": tmpDir},
 				},
@@ -384,9 +418,13 @@ func TestGetAllPodsFromCgroupsSystemPartition(t *testing.T) {
 
 			foundPods, err := pcm.GetAllPodsFromCgroups()
 			require.NoError(t, err)
-			require.Len(t, foundPods, len(podPlacements))
 
-			for uid, parent := range podPlacements {
+			wantPlacements := map[types.UID]CgroupName{}
+			for _, placements := range tc.wantPods {
+				maps.Copy(wantPlacements, placements)
+			}
+			require.Len(t, foundPods, len(wantPlacements))
+			for uid, parent := range wantPlacements {
 				want := NewCgroupName(parent, GetPodCgroupNameSuffix(uid))
 				got, ok := foundPods[uid]
 				require.Truef(t, ok, "pod %q not discovered", uid)

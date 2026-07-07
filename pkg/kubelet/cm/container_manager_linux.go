@@ -205,6 +205,13 @@ type containerManagerImpl struct {
 	// holds system pods when the NodeSystemPartition feature is enabled and a
 	// system partition is configured. It is empty (nil) otherwise.
 	systemPartitionCgroupName CgroupName
+	// partitionCgroupRoots maps each node system partition name to its cgroup
+	// root (for example "system" -> kubepods/system). It is used to reconcile
+	// orphaned pod cgroups across partitions. It always includes the system
+	// partition location (derived from the default root when the feature is
+	// disabled) so leftover pod cgroups are cleaned up after the
+	// NodeSystemPartition feature is disabled or rolled back.
+	partitionCgroupRoots map[string]CgroupName
 	// Event recorder interface.
 	recorder record.EventRecorder
 	// Interface for QoS cgroup management
@@ -368,6 +375,22 @@ func NewContainerManager(ctx context.Context, mountUtil mount.Interface, cadviso
 		logger.Info("System partition enabled", "systemPartitionCgroupName", systemPartitionCgroupName)
 	}
 
+	// partitionCgroupRoots holds the cgroup root of every node system partition
+	// for orphaned pod cgroup reconciliation. The system partition location is
+	// always included (using the configured cgroup when enabled, otherwise the
+	// derived kubepods/system location) so leftover pod cgroups are cleaned up
+	// after the NodeSystemPartition feature is disabled or rolled back. It is
+	// only populated when the QoS cgroup hierarchy is enabled, since the pod
+	// container manager only scans cgroups in that mode.
+	partitionCgroupRoots := map[string]CgroupName{}
+	if nodeConfig.CgroupsPerQOS {
+		systemScanRoot := systemPartitionCgroupName
+		if len(systemScanRoot) == 0 {
+			systemScanRoot = NewCgroupName(cgroupRoot, systemPartitionCgroupBaseName)
+		}
+		partitionCgroupRoots[systemPartitionCgroupBaseName] = systemScanRoot
+	}
+
 	logger.Info("Creating Container Manager object based on Node Config", "nodeConfig", nodeConfig)
 
 	qosContainerManager, err := NewQOSContainerManager(subsystems, cgroupRoot, systemPartitionCgroupName, nodeConfig, cgroupManager)
@@ -385,6 +408,7 @@ func NewContainerManager(ctx context.Context, mountUtil mount.Interface, cadviso
 		internalCapacity:          internalCapacity,
 		cgroupRoot:                cgroupRoot,
 		systemPartitionCgroupName: systemPartitionCgroupName,
+		partitionCgroupRoots:      partitionCgroupRoots,
 		recorder:                  recorder,
 		qosContainerManager:       qosContainerManager,
 	}
@@ -506,6 +530,7 @@ func (cm *containerManagerImpl) NewPodContainerManager() PodContainerManager {
 			systemPartitionCgroupName: cm.systemPartitionCgroupName,
 			systemQOSContainersInfo:   cm.qosContainerManager.GetSystemQOSContainersInfo(),
 			systemNamespaces:          sets.New(cm.SystemPartition.Namespaces...),
+			partitionCgroupRoots:      cm.partitionCgroupRoots,
 		}
 	}
 	return &podContainerManagerNoop{
