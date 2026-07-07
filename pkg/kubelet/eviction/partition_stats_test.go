@@ -19,8 +19,10 @@ package eviction
 import (
 	"errors"
 	"testing"
+	"time"
 
 	"k8s.io/apimachinery/pkg/api/resource"
+	evictionapi "k8s.io/kubernetes/pkg/kubelet/eviction/api"
 )
 
 func TestCgroupPartitionStatsProviderGetPartitionStats(t *testing.T) {
@@ -115,5 +117,60 @@ func TestNewCgroupPartitionStatsProvider(t *testing.T) {
 	}
 	if provider.readMemoryUsage == nil {
 		t.Errorf("readMemoryUsage should default to a non-nil reader")
+	}
+}
+
+func TestPartitionThresholds(t *testing.T) {
+	hard := evictionapi.Threshold{
+		Signal:   evictionapi.SignalMemoryAvailable,
+		Operator: evictionapi.OpLessThan,
+		Value:    evictionapi.ThresholdValue{Quantity: resource.NewQuantity(100, resource.BinarySI)},
+	}
+	soft := evictionapi.Threshold{
+		Signal:      evictionapi.SignalMemoryAvailable,
+		Operator:    evictionapi.OpLessThan,
+		Value:       evictionapi.ThresholdValue{Quantity: resource.NewQuantity(200, resource.BinarySI)},
+		GracePeriod: time.Minute,
+	}
+	diskHard := evictionapi.Threshold{
+		Signal:   evictionapi.SignalNodeFsAvailable,
+		Operator: evictionapi.OpLessThan,
+		Value:    evictionapi.ThresholdValue{Quantity: resource.NewQuantity(100, resource.BinarySI)},
+	}
+
+	testCases := map[string]struct {
+		thresholds []evictionapi.Threshold
+		want       []evictionapi.Threshold
+	}{
+		"selects hard memory threshold": {
+			thresholds: []evictionapi.Threshold{soft, diskHard, hard},
+			want:       []evictionapi.Threshold{hard},
+		},
+		"ignores soft memory threshold": {
+			thresholds: []evictionapi.Threshold{soft},
+			want:       nil,
+		},
+		"ignores non-memory thresholds": {
+			thresholds: []evictionapi.Threshold{diskHard},
+			want:       nil,
+		},
+		"empty input": {
+			thresholds: nil,
+			want:       nil,
+		},
+	}
+
+	for name, tc := range testCases {
+		t.Run(name, func(t *testing.T) {
+			got := PartitionThresholds(tc.thresholds)
+			if len(got) != len(tc.want) {
+				t.Fatalf("PartitionThresholds() returned %d thresholds, want %d", len(got), len(tc.want))
+			}
+			for i := range got {
+				if got[i].Signal != tc.want[i].Signal || got[i].Value.Quantity.Cmp(*tc.want[i].Value.Quantity) != 0 {
+					t.Errorf("PartitionThresholds()[%d] = %+v, want %+v", i, got[i], tc.want[i])
+				}
+			}
+		})
 	}
 }

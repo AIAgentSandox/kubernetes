@@ -55,6 +55,17 @@ type compositeEvictionAdmitHandler struct {
 // ensure it implements the required interface
 var _ lifecycle.PodAdmitHandler = &compositeEvictionAdmitHandler{}
 
+// NewCompositeEvictionAdmitHandler returns a PodAdmitHandler that combines the
+// node-wide admission decision with per-partition memory pressure checks. It is
+// the entry point used by callers outside this package (e.g. the kubelet).
+func NewCompositeEvictionAdmitHandler(
+	nodeAdmitHandler lifecycle.PodAdmitHandler,
+	partitionManagers map[string]Manager,
+	podPartitionFunc func(pod *v1.Pod) string,
+) lifecycle.PodAdmitHandler {
+	return newCompositeEvictionAdmitHandler(nodeAdmitHandler, partitionManagers, podPartitionFunc)
+}
+
 // newCompositeEvictionAdmitHandler returns a PodAdmitHandler that combines the
 // node-wide admission decision with per-partition memory pressure checks.
 func newCompositeEvictionAdmitHandler(

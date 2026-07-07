@@ -22,9 +22,29 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	statsapi "k8s.io/kubelet/pkg/apis/stats/v1alpha1"
+	evictionapi "k8s.io/kubernetes/pkg/kubelet/eviction/api"
 	"k8s.io/kubernetes/pkg/kubelet/server/stats"
 	"k8s.io/utils/clock"
 )
+
+// SystemPartitionName is the canonical name of the node system partition. It is
+// used as the map key for the partition's eviction manager and as the value of
+// the "partition" metric label.
+const SystemPartitionName = "system"
+
+// PartitionThresholds returns the subset of the provided node-level thresholds
+// that a partition eviction manager can evaluate — currently the hard
+// memory.available threshold. A partition manager only reads memory stats, so
+// disk, PID, and soft thresholds do not apply; reusing the node hard threshold
+// preserves the pre-refactor partition eviction trigger. The result is nil when
+// no hard memory.available threshold is configured.
+func PartitionThresholds(thresholds []evictionapi.Threshold) []evictionapi.Threshold {
+	threshold, found := memoryAvailableHardThreshold(thresholds)
+	if !found {
+		return nil
+	}
+	return []evictionapi.Threshold{threshold}
+}
 
 // PartitionStats holds the resource usage stats for a single partition.
 type PartitionStats struct {
@@ -53,6 +73,14 @@ type cgroupPartitionStatsProvider struct {
 	// readMemoryUsage reads the current memory usage (in bytes) of the partition
 	// cgroup. It is a field so tests can substitute a fake reader.
 	readMemoryUsage partitionMemoryReader
+}
+
+// NewCgroupPartitionStatsProvider returns a PartitionStatsProvider that reads the
+// partition memory usage from the cgroup filesystem at cgroupPath and reports the
+// configured memoryLimit. It is the entry point used by callers outside this
+// package (e.g. the kubelet) to build the stats source for a partition manager.
+func NewCgroupPartitionStatsProvider(cgroupPath string, memoryLimit *resource.Quantity) PartitionStatsProvider {
+	return newCgroupPartitionStatsProvider(cgroupPath, memoryLimit)
 }
 
 // newCgroupPartitionStatsProvider returns a PartitionStatsProvider that reads the

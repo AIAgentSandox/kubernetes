@@ -102,6 +102,7 @@ import (
 	kubecontainer "k8s.io/kubernetes/pkg/kubelet/container"
 	"k8s.io/kubernetes/pkg/kubelet/events"
 	"k8s.io/kubernetes/pkg/kubelet/eviction"
+	evictionapi "k8s.io/kubernetes/pkg/kubelet/eviction/api"
 	"k8s.io/kubernetes/pkg/kubelet/images"
 	"k8s.io/kubernetes/pkg/kubelet/kubeletconfig"
 	"k8s.io/kubernetes/pkg/kubelet/kuberuntime"
@@ -365,6 +366,51 @@ func newCrashLoopBackOff(kubeCfg *kubeletconfiginternal.KubeletConfiguration) (t
 	return boMax, boInitial
 }
 
+// newPartitionEvictionManagers constructs an eviction manager per configured node
+// partition, keyed by partition name, along with the pod namespace set that scopes
+// each manager. It returns empty maps when the NodeSystemPartition feature is
+// disabled, no partition namespaces are configured, or the partition cgroup does
+// not exist.
+//
+// systemPartitionCgroupPath is the container manager's cgroupfs path for the
+// system partition; it is empty when the partition cgroup was not created (e.g.
+// QoS cgroups are disabled). Wiring is skipped in that case so the monitoring loop
+// never reads the memory cgroup root (an empty path) and mistakes whole-node usage
+// for partition usage.
+func newPartitionEvictionManagers(
+	systemPartition kubeletconfiginternal.SystemPartitionConfiguration,
+	systemPartitionCgroupPath string,
+	thresholds []evictionapi.Threshold,
+	killPodFunc eviction.KillPodFunc,
+	recorder record.EventRecorder,
+	nodeRef *v1.ObjectReference,
+	clock clock.WithTicker,
+) (map[string]eviction.Manager, map[string]sets.Set[string]) {
+	managers := map[string]eviction.Manager{}
+	namespaces := map[string]sets.Set[string]{}
+
+	if !utilfeature.DefaultFeatureGate.Enabled(features.NodeSystemPartition) || len(systemPartition.Namespaces) == 0 {
+		return managers, namespaces
+	}
+	if systemPartitionCgroupPath == "" {
+		return managers, namespaces
+	}
+
+	memoryLimit := systemPartition.MemoryLimit
+	statsProvider := eviction.NewCgroupPartitionStatsProvider(systemPartitionCgroupPath, &memoryLimit)
+	managers[eviction.SystemPartitionName] = eviction.NewPartitionManager(
+		eviction.SystemPartitionName,
+		statsProvider,
+		eviction.PartitionThresholds(thresholds),
+		killPodFunc,
+		recorder,
+		nodeRef,
+		clock,
+	)
+	namespaces[eviction.SystemPartitionName] = sets.New(systemPartition.Namespaces...)
+	return managers, namespaces
+}
+
 // makePodSourceConfig creates a config.PodConfig from the given
 // KubeletConfiguration or returns an error.
 func makePodSourceConfig(ctx context.Context, kubeCfg *kubeletconfiginternal.KubeletConfiguration, kubeDeps *Dependencies, nodeName types.NodeName, nodeHasSynced func() bool) (*config.PodConfig, error) {
@@ -543,10 +589,10 @@ func NewMainKubelet(ctx context.Context,
 		KernelMemcgNotification:  kernelMemcgNotification,
 		PodCgroupRoot:            kubeDeps.ContainerManager.GetPodCgroupRoot(),
 	}
-	// TODO(KEP-5894): Wire up partition-scoped eviction here by constructing a
-	// dedicated eviction.Manager per configured partition via
-	// eviction.NewPartitionManager and registering a composite admit handler.
-	// The node-wide eviction manager no longer carries partition configuration.
+	// Partition-scoped eviction managers are constructed below, alongside the
+	// node-wide eviction manager, once the node reference and kill-pod function
+	// are available (see eviction.NewPartitionManager). The node-wide eviction
+	// manager no longer carries partition configuration.
 
 	var serviceLister corelisters.ServiceLister
 	var serviceHasSynced cache.InformerSynced
@@ -1090,8 +1136,39 @@ func NewMainKubelet(ctx context.Context,
 		killPodNow(ctx, klet.podWorkers, kubeDeps.Recorder), klet.imageManager, klet.containerGC, kubeDeps.Recorder, nodeRef, klet.clock, kubeCfg.LocalStorageCapacityIsolation)
 
 	klet.evictionManager = evictionManager
+
+	// Wire up partition-scoped eviction. When the NodeSystemPartition feature is
+	// enabled and a system partition is configured, a dedicated eviction manager
+	// monitors the partition cgroup and evicts partition pods independently of the
+	// node-wide manager. A composite admit handler then gates admission on both the
+	// node-wide conditions and the target partition's pressure.
+	klet.partitionEvictionManagers, klet.partitionNamespaces = newPartitionEvictionManagers(
+		kubeCfg.SystemPartition,
+		kubeDeps.ContainerManager.GetSystemPartitionCgroupRoot(),
+		thresholds,
+		killPodNow(ctx, klet.podWorkers, kubeDeps.Recorder),
+		kubeDeps.Recorder,
+		nodeRef,
+		klet.clock,
+	)
+
 	handlers := []lifecycle.PodAdmitHandler{}
-	handlers = append(handlers, evictionAdmitHandler)
+	if len(klet.partitionEvictionManagers) > 0 {
+		// podPartitionFunc routes a pod to the partition whose namespace set
+		// contains the pod's namespace, or "" for the default (node-wide) partition.
+		partitionNamespaces := klet.partitionNamespaces
+		podPartitionFunc := func(pod *v1.Pod) string {
+			for name, namespaces := range partitionNamespaces {
+				if namespaces.Has(pod.Namespace) {
+					return name
+				}
+			}
+			return ""
+		}
+		handlers = append(handlers, eviction.NewCompositeEvictionAdmitHandler(evictionAdmitHandler, klet.partitionEvictionManagers, podPartitionFunc))
+	} else {
+		handlers = append(handlers, evictionAdmitHandler)
+	}
 
 	if utilfeature.DefaultFeatureGate.Enabled(features.NodeDeclaredFeatures) {
 		if status, err := klet.containerRuntime.Status(ctx); err == nil && status != nil {
@@ -1276,6 +1353,18 @@ type Kubelet struct {
 	// eviction manager acts on the actual state of the node and considers the podWorker to be
 	// authoritative.
 	evictionManager eviction.Manager
+
+	// partitionEvictionManagers holds an eviction manager per configured node
+	// partition (e.g. "system"), keyed by partition name. Each manager runs its
+	// own control loop scoped to the partition cgroup and evicts pods that run in
+	// the partition when it is under memory pressure. It is empty unless the
+	// NodeSystemPartition feature is enabled and a partition cgroup is configured.
+	partitionEvictionManagers map[string]eviction.Manager
+
+	// partitionNamespaces maps a partition name to the set of pod namespaces whose
+	// pods run in that partition. It scopes each partition eviction manager's
+	// active pods and routes pod admission to the correct partition manager.
+	partitionNamespaces map[string]sets.Set[string]
 
 	// probeManager tracks the set of running pods and ensures any user-defined periodic checks are
 	// run to introspect the state of each pod.  The probe manager acts on the actual state of the node
@@ -1844,6 +1933,25 @@ func (kl *Kubelet) initializeRuntimeDependentModules(ctx context.Context) {
 	// eviction manager must start after cadvisor because it needs to know if the container runtime has a dedicated imagefs
 	// Eviction decisions are based on the allocated (rather than desired) pod resources.
 	kl.evictionManager.Start(ctx, kl.StatsProvider, kl.getAllocatedPods, kl.PodIsFinished, evictionMonitoringPeriod)
+
+	// Start a control loop for each partition eviction manager. Each manager only
+	// considers pods that run in its partition (i.e. whose namespace belongs to the
+	// partition), so its active-pods function filters the allocated pods by the
+	// partition's namespace set.
+	for partitionName, partitionManager := range kl.partitionEvictionManagers {
+		namespaces := kl.partitionNamespaces[partitionName]
+		activePodsFunc := func() []*v1.Pod {
+			pods := kl.getAllocatedPods()
+			filtered := make([]*v1.Pod, 0, len(pods))
+			for _, pod := range pods {
+				if namespaces.Has(pod.Namespace) {
+					filtered = append(filtered, pod)
+				}
+			}
+			return filtered
+		}
+		partitionManager.Start(ctx, kl.StatsProvider, activePodsFunc, kl.PodIsFinished, evictionMonitoringPeriod)
+	}
 
 	// container log manager must start after container runtime is up to retrieve information from container runtime
 	// and inform container to reopen log file after log rotation.
