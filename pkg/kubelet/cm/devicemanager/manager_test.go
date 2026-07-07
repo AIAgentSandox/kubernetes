@@ -60,6 +60,7 @@ import (
 	"k8s.io/kubernetes/pkg/kubelet/pluginmanager"
 	schedulerframework "k8s.io/kubernetes/pkg/scheduler/framework"
 	"k8s.io/kubernetes/test/utils/ktesting"
+	"k8s.io/kubernetes/test/utils/ktesting/initoption"
 )
 
 const (
@@ -2677,6 +2678,10 @@ func TestSameSocketRaceDisconnectBeforeReconnectAttempt(t *testing.T) {
 // requires plugin2 to restart its gRPC server (which severs plugin1's stream,
 // triggering disconnect and clearing the slot) or external intervention
 // (e.g. kubelet restart).
+//
+// This corrupted state is otherwise silent. PluginConnected logs every
+// rejection with the incumbent's stopped flag so it is detectable from kubelet
+// logs — see TestPluginConnectedDuplicateRejectionIsDetectable.
 func TestSameSocketRaceFastTakeoverMayResultInInfiniteRetries(t *testing.T) {
 	_, tCtx := ktesting.NewTestContext(t)
 	manager, cleanup := newSameSocketTestManager(t)
@@ -2726,4 +2731,47 @@ func TestSameSocketRaceFastTakeoverMayResultInInfiniteRetries(t *testing.T) {
 		"Allocate must reach plugin1's API (which is really plugin2's server in the real race)")
 	require.Equal(t, 0, p2API.allocateCalled,
 		"plugin2's own API is never called — it was never registered")
+}
+
+// TestPluginConnectedDuplicateRejectionIsDetectable verifies that the manager
+// makes the otherwise-silent same-socket corrupted state observable: when a
+// registration is rejected because the (resourceName, socketPath) slot is
+// already occupied, PluginConnected logs the rejection along with whether the
+// incumbent endpoint is already stopped. This is the detection signal that
+// answers the review question — without it the stuck fast-takeover state
+// (plugin retrying registration forever against a live incumbent) leaves no
+// trace in kubelet logs.
+func TestPluginConnectedDuplicateRejectionIsDetectable(t *testing.T) {
+	// A buffering logger lets the test read back what the manager logged and
+	// assert the corrupted state is observable. The manager retrieves this
+	// logger via klog.FromContext(tCtx).
+	tCtx := ktesting.Init(t, initoption.BufferLogs(true))
+	logger := tCtx.Logger()
+	underlier, ok := logger.GetSink().(ktesting.Underlier)
+	require.True(t, ok, "expected a ktesting LogSink to capture emitted logs, got %T", logger.GetSink())
+
+	manager, cleanup := newSameSocketTestManager(t)
+	defer cleanup()
+
+	const resourceName = "domain1.com/resource1"
+	const socketA = "/var/lib/kubelet/plugins/socketA.sock"
+
+	// The incumbent is live (never disconnected) — this is the stuck-takeover
+	// shape where the rejection would otherwise be invisible.
+	p1 := newFakeDevicePlugin(resourceName, socketA)
+	require.NoError(t, manager.PluginConnected(tCtx, resourceName, p1))
+
+	p2 := newFakeDevicePlugin(resourceName, socketA)
+	err := manager.PluginConnected(tCtx, resourceName, p2)
+	require.Error(t, err, "second connect at the occupied socket must be rejected")
+
+	logs := underlier.GetBuffer().String()
+	require.Contains(t, logs, "possible same-socket race",
+		"the rejection must be logged so the corrupted state is detectable from kubelet logs")
+	require.Contains(t, logs, socketA,
+		"the detection log must name the contended socket path")
+	require.Contains(t, logs, "incumbentStopped",
+		"the detection log must report whether the incumbent endpoint is already draining")
+	require.Contains(t, logs, "incumbentStopped=false",
+		"a live incumbent (the stuck-takeover shape) must be reported as not stopped")
 }
