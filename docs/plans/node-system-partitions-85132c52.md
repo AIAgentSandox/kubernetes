@@ -1,5 +1,12 @@
 # node system partitions
 
+## Follow-up work
+- A follow-up refactoring extends the KEP-5894 internals for multi-partition
+  extensibility (splitting eviction into N independent `Manager` instances,
+  generalizing cgroup creation/reconciliation over partitions, and adding a
+  composite eviction admit handler). See the completed plan:
+  [Refactor Node System Partition for Multi-Partition Extensibility](completed/node-system-partitions-refactor-85132c52.md).
+
 ## Implementation Steps
 
 ### Task 1: node system partitions
