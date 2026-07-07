@@ -85,7 +85,7 @@ func TestCreateSystemPartitionCgroup(t *testing.T) {
 			Namespaces:  []string{"kube-system"},
 		}
 
-		require.NoError(t, createSystemPartitionCgroup(logger, fake, name, config))
+		require.NoError(t, createPartitionCgroup(logger, fake, name, config))
 		require.Len(t, fake.created, 1)
 		require.Empty(t, fake.updates)
 
@@ -103,7 +103,7 @@ func TestCreateSystemPartitionCgroup(t *testing.T) {
 			Namespaces:  []string{"kube-system"},
 		}
 
-		require.NoError(t, createSystemPartitionCgroup(logger, fake, name, config))
+		require.NoError(t, createPartitionCgroup(logger, fake, name, config))
 		require.Empty(t, fake.created)
 		require.Len(t, fake.updates, 1)
 
@@ -118,7 +118,7 @@ func TestCreateSystemPartitionCgroup(t *testing.T) {
 			Namespaces: []string{"kube-system"},
 		}
 
-		require.NoError(t, createSystemPartitionCgroup(logger, fake, name, config))
+		require.NoError(t, createPartitionCgroup(logger, fake, name, config))
 		require.Len(t, fake.created, 1)
 
 		created := fake.created[0]
@@ -133,7 +133,7 @@ func TestCreateSystemPartitionCgroup(t *testing.T) {
 			Namespaces: []string{"kube-system"},
 		}
 
-		assert.Error(t, createSystemPartitionCgroup(logger, fake, name, config))
+		assert.Error(t, createPartitionCgroup(logger, fake, name, config))
 		assert.Empty(t, fake.created)
 	})
 }
@@ -151,7 +151,7 @@ func TestCleanupSystemPartitionCgroup(t *testing.T) {
 			cgroupRoot:    cgroupRoot,
 		}
 
-		cm.cleanupSystemPartitionCgroup(logger)
+		cm.cleanupPartitionCgroup(logger, systemPartitionCgroupBaseName)
 
 		// QoS sub-cgroups must be destroyed before the partition root because a
 		// cgroup cannot be removed while it still has child cgroups.
@@ -174,7 +174,7 @@ func TestCleanupSystemPartitionCgroup(t *testing.T) {
 			cgroupRoot:    cgroupRoot,
 		}
 
-		cm.cleanupSystemPartitionCgroup(logger)
+		cm.cleanupPartitionCgroup(logger, systemPartitionCgroupBaseName)
 
 		assert.Empty(t, fake.destroyed)
 	})

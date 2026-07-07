@@ -86,10 +86,10 @@ func systemPartitionConfigured(config kubeletconfig.SystemPartitionConfiguration
 	return utilfeature.DefaultFeatureGate.Enabled(kubefeatures.NodeSystemPartition) && len(config.Namespaces) > 0
 }
 
-// createSystemPartitionCgroup creates (or updates when it already exists) the
-// kubepods/system cgroup with the configured resource constraints. The memory
-// limit is applied as memory.max and the cpuset as cpuset.cpus.
-func createSystemPartitionCgroup(logger klog.Logger, cgroupManager CgroupManager, name CgroupName, config kubeletconfig.SystemPartitionConfiguration) error {
+// createPartitionCgroup creates (or updates when it already exists) the
+// kubepods/<partition> cgroup with the configured resource constraints. The
+// memory limit is applied as memory.max and the cpuset as cpuset.cpus.
+func createPartitionCgroup(logger klog.Logger, cgroupManager CgroupManager, name CgroupName, config kubeletconfig.SystemPartitionConfiguration) error {
 	resourceParameters := &ResourceConfig{}
 	if memoryLimit := config.MemoryLimit.Value(); memoryLimit > 0 {
 		resourceParameters.Memory = &memoryLimit
@@ -97,7 +97,7 @@ func createSystemPartitionCgroup(logger klog.Logger, cgroupManager CgroupManager
 	if config.CPUSet != "" {
 		cpus, err := cpuset.Parse(config.CPUSet)
 		if err != nil {
-			return fmt.Errorf("failed to parse system partition cpuset %q: %w", config.CPUSet, err)
+			return fmt.Errorf("failed to parse partition cpuset %q: %w", config.CPUSet, err)
 		}
 		resourceParameters.CPUSet = cpus
 	}
@@ -108,17 +108,17 @@ func createSystemPartitionCgroup(logger klog.Logger, cgroupManager CgroupManager
 	}
 	if cgroupManager.Exists(name) {
 		if err := cgroupManager.Update(logger, cgroupConfig); err != nil {
-			return fmt.Errorf("failed to update system partition cgroup %v: %w", name, err)
+			return fmt.Errorf("failed to update partition cgroup %v: %w", name, err)
 		}
 		return nil
 	}
 	if err := cgroupManager.Create(logger, cgroupConfig); err != nil {
-		return fmt.Errorf("failed to create system partition cgroup %v: %w", name, err)
+		return fmt.Errorf("failed to create partition cgroup %v: %w", name, err)
 	}
 	return nil
 }
 
-// cleanupSystemPartitionCgroup removes a leftover kubepods/system cgroup
+// cleanupPartitionCgroup removes a leftover kubepods/<partition> cgroup
 // hierarchy when the NodeSystemPartition feature is disabled or rolled back.
 // Pod cgroups under the partition are removed by the normal orphaned-cgroup
 // reconciliation; this cleans up the now-empty QoS sub-cgroups and the
@@ -127,16 +127,16 @@ func createSystemPartitionCgroup(logger klog.Logger, cgroupManager CgroupManager
 // does not block kubelet startup. Cleanup is retried on the next kubelet
 // restart. The QoS sub-cgroups are destroyed before the partition root because
 // a cgroup cannot be removed while it still has child cgroups.
-func (cm *containerManagerImpl) cleanupSystemPartitionCgroup(logger klog.Logger) {
-	systemPartitionCgroupName := NewCgroupName(cm.cgroupRoot, systemPartitionCgroupBaseName)
-	if !cm.cgroupManager.Exists(systemPartitionCgroupName) {
+func (cm *containerManagerImpl) cleanupPartitionCgroup(logger klog.Logger, partitionName string) {
+	partitionCgroupName := NewCgroupName(cm.cgroupRoot, partitionName)
+	if !cm.cgroupManager.Exists(partitionCgroupName) {
 		return
 	}
-	logger.Info("Cleaning up leftover system partition cgroup", "systemPartitionCgroupName", systemPartitionCgroupName)
+	logger.Info("Cleaning up leftover partition cgroup", "partition", partitionName, "partitionCgroupName", partitionCgroupName)
 	cgroupsToDestroy := []CgroupName{
-		NewCgroupName(systemPartitionCgroupName, strings.ToLower(string(v1.PodQOSBurstable))),
-		NewCgroupName(systemPartitionCgroupName, strings.ToLower(string(v1.PodQOSBestEffort))),
-		systemPartitionCgroupName,
+		NewCgroupName(partitionCgroupName, strings.ToLower(string(v1.PodQOSBurstable))),
+		NewCgroupName(partitionCgroupName, strings.ToLower(string(v1.PodQOSBestEffort))),
+		partitionCgroupName,
 	}
 	for _, name := range cgroupsToDestroy {
 		if !cm.cgroupManager.Exists(name) {
@@ -147,7 +147,7 @@ func (cm *containerManagerImpl) cleanupSystemPartitionCgroup(logger klog.Logger)
 			ResourceParameters: &ResourceConfig{},
 		}
 		if err := cm.cgroupManager.Destroy(logger, cgroupConfig); err != nil {
-			logger.Info("Failed to clean up system partition cgroup, will retry on next kubelet restart", "cgroupName", name, "err", err)
+			logger.Info("Failed to clean up partition cgroup, will retry on next kubelet restart", "partition", partitionName, "cgroupName", name, "err", err)
 		}
 	}
 }
@@ -643,11 +643,11 @@ func (cm *containerManagerImpl) setupNode(ctx context.Context, activePods Active
 		// feature is disabled or rolled back, remove any leftover kubepods/system
 		// hierarchy so the node returns to the default single-partition layout.
 		if len(cm.systemPartitionCgroupName) > 0 {
-			if err := createSystemPartitionCgroup(logger, cm.cgroupManager, cm.systemPartitionCgroupName, cm.SystemPartition); err != nil {
+			if err := createPartitionCgroup(logger, cm.cgroupManager, cm.systemPartitionCgroupName, cm.SystemPartition); err != nil {
 				return fmt.Errorf("failed to initialize system partition cgroup: %w", err)
 			}
 		} else {
-			cm.cleanupSystemPartitionCgroup(logger)
+			cm.cleanupPartitionCgroup(logger, systemPartitionCgroupBaseName)
 		}
 		err = cm.qosContainerManager.Start(ctx, cm.GetNodeAllocatableAbsolute, activePods)
 		if err != nil {
