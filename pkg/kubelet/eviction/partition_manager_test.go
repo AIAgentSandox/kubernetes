@@ -81,10 +81,6 @@ func TestNewPartitionManager(t *testing.T) {
 	if _, ok := impl.summaryProvider.(*partitionSummaryProvider); !ok {
 		t.Errorf("summaryProvider = %T, want *partitionSummaryProvider", impl.summaryProvider)
 	}
-	// Partition managers do not carry the node-wide partition config.
-	if impl.systemPartition != nil {
-		t.Errorf("systemPartition = %+v, want nil", impl.systemPartition)
-	}
 	if impl.nodeRef != nodeRef {
 		t.Errorf("nodeRef = %+v, want %+v", impl.nodeRef, nodeRef)
 	}

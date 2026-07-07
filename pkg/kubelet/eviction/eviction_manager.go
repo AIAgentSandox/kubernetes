@@ -111,16 +111,6 @@ type managerImpl struct {
 	// (e.g. "system") for a partition-scoped manager created via
 	// NewPartitionManager. It is used for partition metrics labels and logging.
 	partitionName string
-	// systemPartition holds the configuration for the node system partition. It
-	// is nil unless the NodeSystemPartition feature is enabled and a system
-	// partition is configured.
-	systemPartition *SystemPartitionConfig
-	// partitionMemoryReader reads the current memory usage of a partition cgroup.
-	// It is overridable in tests.
-	partitionMemoryReader partitionMemoryReader
-	// partitionMemoryPressure records whether the system partition memory
-	// eviction threshold is currently met, as observed by the monitoring loop.
-	partitionMemoryPressure bool
 }
 
 // ensure it implements the required interface
@@ -153,8 +143,6 @@ func NewManager(
 		splitContainerImageFs:         nil,
 		thresholdNotifiers:            []ThresholdNotifier{},
 		localStorageCapacityIsolation: localStorageCapacityIsolation,
-		systemPartition:               config.SystemPartition,
-		partitionMemoryReader:         readPartitionMemoryUsage,
 	}
 	return manager, manager
 }
@@ -322,131 +310,10 @@ func (m *managerImpl) IsUnderPIDPressure() bool {
 	return hasNodeCondition(m.nodeConditions, v1.NodePIDPressure)
 }
 
-// IsUnderPartitionMemoryPressure returns true if the node system partition is
-// under memory pressure, as observed by the most recent monitoring cycle.
-func (m *managerImpl) IsUnderPartitionMemoryPressure() bool {
-	m.RLock()
-	defer m.RUnlock()
-	return m.partitionMemoryPressure
-}
-
-// synchronizePartitionMemory monitors the node system partition. When a system
-// partition is configured it reads the partition's current memory usage, emits
-// the partition memory usage and limit metrics, and records whether the
-// partition memory eviction threshold is currently met. The recorded signal is
-// consumed by partition-scoped eviction targeting.
-func (m *managerImpl) synchronizePartitionMemory(logger klog.Logger) {
-	if m.systemPartition == nil || m.systemPartition.MemoryLimit == nil || m.systemPartition.CgroupPath == "" {
-		// An empty CgroupPath would resolve to the memory cgroup root, causing
-		// whole-node memory usage to be mistaken for partition usage. Only
-		// monitor when the partition cgroup path is known.
-		return
-	}
-
-	// Always publish the configured limit so consumers can observe the partition
-	// even before the first usage reading succeeds.
-	memoryLimit := m.systemPartition.MemoryLimit
-	metrics.PartitionMemoryLimit.WithLabelValues(systemPartitionName).Set(float64(memoryLimit.Value()))
-
-	usage, err := m.partitionMemoryReader(m.systemPartition.CgroupPath)
-	if err != nil {
-		logger.V(3).Info("Eviction manager: failed to read system partition memory usage", "cgroupPath", m.systemPartition.CgroupPath, "err", err)
-		// Clear any previously recorded pressure so a stale reading does not keep
-		// driving partition-scoped eviction without a fresh signal. This mirrors
-		// node-level eviction, which recomputes its signals from scratch each
-		// cycle rather than persisting pressure across failed observations.
-		m.Lock()
-		m.partitionMemoryPressure = false
-		m.Unlock()
-		return
-	}
-	metrics.PartitionMemoryUsage.WithLabelValues(systemPartitionName).Set(float64(usage))
-
-	threshold, found := memoryAvailableHardThreshold(m.config.Thresholds)
-	pressure := false
-	if found {
-		pressure = partitionMemoryThresholdMet(threshold.Value, memoryLimit, usage)
-	}
-	if pressure {
-		available := partitionMemoryAvailable(memoryLimit, usage)
-		logger.Info("Eviction manager: system partition is under memory pressure", "memoryLimit", memoryLimit.String(), "usage", usage, "available", available.String())
-	}
-
-	m.Lock()
-	m.partitionMemoryPressure = pressure
-	m.Unlock()
-}
-
-// partitionMemoryEviction evicts a single pod from the node system partition
-// when the partition memory eviction threshold has been met, as recorded by the
-// monitoring loop. Only pods that belong to the system partition (i.e. run in a
-// configured system namespace) are eligible candidates; node-wide eviction is
-// handled separately and still considers all pods. The eligible pods are ranked
-// using the same memory-pressure ranking applied at the node level (QoS class,
-// then usage relative to requests). It returns the evicted pods, or nil when no
-// eviction was necessary or possible.
-func (m *managerImpl) partitionMemoryEviction(logger klog.Logger, activePods []*v1.Pod, statsFunc statsFunc) []*v1.Pod {
-	if m.systemPartition == nil {
-		return nil
-	}
-	m.RLock()
-	pressure := m.partitionMemoryPressure
-	thresholds := m.thresholdsMet
-	observations := m.lastObservations
-	m.RUnlock()
-	if !pressure {
-		return nil
-	}
-
-	// restrict candidates to pods that belong to the system partition.
-	partitionPods := filterPodsByNamespaces(activePods, m.systemPartition.Namespaces)
-	if len(partitionPods) == 0 {
-		logger.V(3).Info("Eviction manager: system partition is under memory pressure, but no system-partition pods are active to evict")
-		return nil
-	}
-
-	rank, ok := m.signalToRankFunc[evictionapi.SignalMemoryAvailable]
-	if !ok {
-		logger.Error(nil, "Eviction manager: no ranking function for system partition memory eviction")
-		return nil
-	}
-
-	// rank the system-partition pods for eviction using memory pressure ranking.
-	rank(partitionPods, statsFunc)
-	logger.Info("Eviction manager: system partition pods ranked for eviction", "pods", klog.KObjSlice(partitionPods))
-
-	// evict at most a single pod per interval, matching node-level behavior. The
-	// partition threshold is a hard threshold, so pods are evicted immediately.
-	for i := range partitionPods {
-		pod := partitionPods[i]
-		gracePeriodOverride := int64(immediateEvictionGracePeriodSeconds)
-		message, annotations := evictionMessage(v1.ResourceMemory, pod, statsFunc, thresholds, observations)
-		condition := &v1.PodCondition{
-			Type:               v1.DisruptionTarget,
-			ObservedGeneration: pod.Generation,
-			Status:             v1.ConditionTrue,
-			Reason:             v1.PodReasonTerminationByKubelet,
-			Message:            message,
-		}
-		if m.evictPod(logger, pod, gracePeriodOverride, message, annotations, condition) {
-			metrics.Evictions.WithLabelValues(string(evictionapi.SignalMemoryAvailable)).Inc()
-			return []*v1.Pod{pod}
-		}
-	}
-	logger.Info("Eviction manager: unable to evict any pods from the system partition")
-	return nil
-}
-
 // synchronize is the main control loop that enforces eviction thresholds.
 // Returns the pod that was killed, or nil if no pod was killed.
 func (m *managerImpl) synchronize(ctx context.Context, diskInfoProvider DiskInfoProvider, podFunc ActivePodsFunc) ([]*v1.Pod, error) {
 	logger := klog.FromContext(ctx)
-
-	// Monitor the node system partition independently of the node-level
-	// thresholds. This reads the partition's current memory usage, emits the
-	// partition memory metrics, and records whether the partition memory
-	// eviction threshold is met for later use by partition-scoped eviction.
-	m.synchronizePartitionMemory(logger)
 
 	// if we have nothing to do, just return
 	thresholds := m.config.Thresholds
@@ -566,15 +433,6 @@ func (m *managerImpl) synchronize(ctx context.Context, diskInfoProvider DiskInfo
 		if evictedPods := m.localStorageEviction(logger, activePods, statsFunc); len(evictedPods) > 0 {
 			return evictedPods, nil
 		}
-	}
-
-	// evict a system-partition pod when the partition memory threshold is met.
-	// This is independent of node-level thresholds: the node as a whole may have
-	// plenty of memory while the system partition is constrained. Only pods in the
-	// configured system namespaces are candidates here; node-wide eviction below
-	// still considers all pods, including system-partition ones.
-	if evictedPods := m.partitionMemoryEviction(logger, activePods, statsFunc); len(evictedPods) > 0 {
-		return evictedPods, nil
 	}
 
 	if len(thresholds) == 0 {

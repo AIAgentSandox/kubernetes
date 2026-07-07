@@ -543,26 +543,10 @@ func NewMainKubelet(ctx context.Context,
 		KernelMemcgNotification:  kernelMemcgNotification,
 		PodCgroupRoot:            kubeDeps.ContainerManager.GetPodCgroupRoot(),
 	}
-	if utilfeature.DefaultFeatureGate.Enabled(features.NodeSystemPartition) && len(kubeCfg.SystemPartition.Namespaces) > 0 {
-		// Use the driver-adapted cgroupfs path derived from the same CgroupName
-		// the container manager uses to create the partition. Concatenating
-		// "/system" onto GetPodCgroupRoot() would be wrong under the systemd
-		// cgroup driver (the child is kubepods-system.slice, not system).
-		//
-		// The container manager only creates the partition cgroup when QoS
-		// cgroups are enabled; GetSystemPartitionCgroupRoot returns "" otherwise.
-		// Only wire up partition-scoped eviction when the partition cgroup
-		// actually exists, so the monitoring loop never reads the memory cgroup
-		// root (an empty path) and mistakes whole-node usage for partition usage.
-		if systemPartitionCgroupPath := kubeDeps.ContainerManager.GetSystemPartitionCgroupRoot(); systemPartitionCgroupPath != "" {
-			memoryLimit := kubeCfg.SystemPartition.MemoryLimit
-			evictionConfig.SystemPartition = &eviction.SystemPartitionConfig{
-				MemoryLimit: &memoryLimit,
-				CgroupPath:  systemPartitionCgroupPath,
-				Namespaces:  sets.New(kubeCfg.SystemPartition.Namespaces...),
-			}
-		}
-	}
+	// TODO(KEP-5894): Wire up partition-scoped eviction here by constructing a
+	// dedicated eviction.Manager per configured partition via
+	// eviction.NewPartitionManager and registering a composite admit handler.
+	// The node-wide eviction manager no longer carries partition configuration.
 
 	var serviceLister corelisters.ServiceLister
 	var serviceHasSynced cache.InformerSynced

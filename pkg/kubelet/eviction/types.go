@@ -24,7 +24,6 @@ import (
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/klog/v2"
 	statsapi "k8s.io/kubelet/pkg/apis/stats/v1alpha1"
 	evictionapi "k8s.io/kubernetes/pkg/kubelet/eviction/api"
@@ -56,26 +55,6 @@ type Config struct {
 	KernelMemcgNotification bool
 	// PodCgroupRoot is the cgroup which contains all pods.
 	PodCgroupRoot string
-	// SystemPartition holds the configuration for the node system partition. It
-	// is nil unless the NodeSystemPartition feature is enabled and a system
-	// partition is configured.
-	SystemPartition *SystemPartitionConfig
-}
-
-// SystemPartitionConfig holds the configuration needed to monitor and evict
-// pods within the node system partition (kubepods/system). It is only populated
-// when the NodeSystemPartition feature is enabled and a system partition is
-// configured.
-type SystemPartitionConfig struct {
-	// MemoryLimit is the configured memory limit of the system partition.
-	MemoryLimit *resource.Quantity
-	// CgroupPath is the literal cgroupfs path of the system partition cgroup
-	// relative to the memory cgroup mount point (e.g. "/kubepods/system"). It is
-	// used to read the current memory usage of the partition.
-	CgroupPath string
-	// Namespaces is the set of namespaces whose pods belong to the system
-	// partition.
-	Namespaces sets.Set[string]
 }
 
 // Manager evaluates when an eviction threshold for node stability has been met on the node.
