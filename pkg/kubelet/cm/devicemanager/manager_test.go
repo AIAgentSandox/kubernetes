@@ -2377,7 +2377,7 @@ func installEndpoint(m *ManagerImpl, resourceName string, ep *endpointImpl) {
 // TestPluginConnected_SameResourceSameSocketRejected verifies that a second
 // PluginConnected for the same (resource, socket) is rejected without mutating
 // the existing endpoint state.
-func TestPluginConnected_SameResourceSameSocketRejected(t *testing.T) {
+func TestPluginConnectedSameResourceSameSocketRejected(t *testing.T) {
 	_, tCtx := ktesting.NewTestContext(t)
 	manager, cleanup := newSameSocketTestManager(t)
 	defer cleanup()
@@ -2413,7 +2413,7 @@ func TestPluginConnected_SameResourceSameSocketRejected(t *testing.T) {
 
 // TestPluginConnected_SameResourceDifferentSocketsCoexist verifies that two
 // endpoints for the same resource at different socket paths can coexist.
-func TestPluginConnected_SameResourceDifferentSocketsCoexist(t *testing.T) {
+func TestPluginConnectedSameResourceDifferentSocketsCoexist(t *testing.T) {
 	_, tCtx := ktesting.NewTestContext(t)
 	manager, cleanup := newSameSocketTestManager(t)
 	defer cleanup()
@@ -2447,7 +2447,7 @@ func TestPluginConnected_SameResourceDifferentSocketsCoexist(t *testing.T) {
 
 // TestPluginDisconnected_WrongSocketIsNoop verifies that PluginDisconnected
 // for a non-matching or unknown socket path does not mutate any state.
-func TestPluginDisconnected_WrongSocketIsNoop(t *testing.T) {
+func TestPluginDisconnectedWrongSocketIsNoop(t *testing.T) {
 	logger, _ := ktesting.NewTestContext(t)
 	manager, cleanup := newSameSocketTestManager(t)
 	defer cleanup()
@@ -2479,7 +2479,7 @@ func TestPluginDisconnected_WrongSocketIsNoop(t *testing.T) {
 // TestPluginDisconnected_PromotesSurvivor verifies that when one of multiple
 // endpoints for a resource disconnects, an arbitrary survivor is promoted to
 // the primary slot and healthy devices remain healthy.
-func TestPluginDisconnected_PromotesSurvivor(t *testing.T) {
+func TestPluginDisconnectedPromotesSurvivor(t *testing.T) {
 	logger, _ := ktesting.NewTestContext(t)
 	manager, cleanup := newSameSocketTestManager(t)
 	defer cleanup()
@@ -2518,7 +2518,7 @@ func TestPluginDisconnected_PromotesSurvivor(t *testing.T) {
 // TestPluginDisconnected_LastEndpointMarksUnhealthy verifies that when the
 // last endpoint for a resource disconnects, all its devices are marked
 // unhealthy and the resource is removed from endpointStore.
-func TestPluginDisconnected_LastEndpointMarksUnhealthy(t *testing.T) {
+func TestPluginDisconnectedLastEndpointMarksUnhealthy(t *testing.T) {
 	logger, _ := ktesting.NewTestContext(t)
 	manager, cleanup := newSameSocketTestManager(t)
 	defer cleanup()
@@ -2546,7 +2546,7 @@ func TestPluginDisconnected_LastEndpointMarksUnhealthy(t *testing.T) {
 // that reused the same socket path. This is current behavior, but it is not
 // the best practice to reuse socket paths. It is also a recoverable
 // state as ListAndWatch will fail and the plugin will be reconnecting.
-func TestSameSocketRace_LateDisconnectAfterReconnect(t *testing.T) {
+func TestSameSocketRaceLateDisconnectAfterReconnect(t *testing.T) {
 	logger, tCtx := ktesting.NewTestContext(t)
 	manager, cleanup := newSameSocketTestManager(t)
 	defer cleanup()
@@ -2599,7 +2599,7 @@ func TestSameSocketRace_LateDisconnectAfterReconnect(t *testing.T) {
 // TestSameSocketRace_DisconnectBeforeReconnectAttempt verifies that a connect
 // attempt at an occupied socket is rejected, but succeeds after the old
 // endpoint disconnects — the expected recovery path.
-func TestSameSocketRace_DisconnectBeforeReconnectAttempt(t *testing.T) {
+func TestSameSocketRaceDisconnectBeforeReconnectAttempt(t *testing.T) {
 	logger, tCtx := ktesting.NewTestContext(t)
 	manager, cleanup := newSameSocketTestManager(t)
 	defer cleanup()
@@ -2650,7 +2650,7 @@ func TestSameSocketRace_DisconnectBeforeReconnectAttempt(t *testing.T) {
 // requires plugin2 to restart its gRPC server (which severs plugin1's stream,
 // triggering disconnect and clearing the slot) or external intervention
 // (e.g. kubelet restart).
-func TestSameSocketRace_FastTakeoverMayResultInInfiniteRetries(t *testing.T) {
+func TestSameSocketRaceFastTakeoverMayResultInInfiniteRetries(t *testing.T) {
 	_, tCtx := ktesting.NewTestContext(t)
 	manager, cleanup := newSameSocketTestManager(t)
 	defer cleanup()
