@@ -2478,7 +2478,10 @@ func TestPluginDisconnectedWrongSocketIsNoop(t *testing.T) {
 
 // TestPluginDisconnected_PromotesSurvivor verifies that when one of multiple
 // endpoints for a resource disconnects, an arbitrary survivor is promoted to
-// the primary slot and healthy devices remain healthy.
+// the primary slot and healthy devices remain healthy. Three endpoints are
+// registered so the promote loop genuinely chooses among more than one
+// candidate; epA and epC are then disconnected, leaving epB as the sole
+// deterministic survivor that must end up in m.endpoints.
 func TestPluginDisconnectedPromotesSurvivor(t *testing.T) {
 	logger, _ := ktesting.NewTestContext(t)
 	manager, cleanup := newSameSocketTestManager(t)
@@ -2487,31 +2490,55 @@ func TestPluginDisconnectedPromotesSurvivor(t *testing.T) {
 	const resourceName = "domain1.com/resource1"
 	const socketA = "/var/lib/kubelet/plugins/socketA.sock"
 	const socketB = "/var/lib/kubelet/plugins/socketB.sock"
+	const socketC = "/var/lib/kubelet/plugins/socketC.sock"
 	epA := makeEndpointAt(resourceName, socketA)
 	epB := makeEndpointAt(resourceName, socketB)
+	epC := makeEndpointAt(resourceName, socketC)
 	installEndpoint(manager, resourceName, epA)
 	installEndpoint(manager, resourceName, epB)
+	installEndpoint(manager, resourceName, epC)
 	// installEndpoint sets the primary to whichever was inserted last; pin
 	// the primary to epA so the test specifically removes the primary and
-	// observes the survivor being promoted into m.endpoints.
+	// observes a survivor being promoted into m.endpoints.
 	manager.endpoints[resourceName] = endpointInfo{e: epA, opts: &pluginapi.DevicePluginOptions{}}
 	manager.healthyDevices[resourceName] = sets.New("dev1")
 
+	// Disconnect the primary epA. With epB and epC still registered the
+	// promoted survivor is arbitrary (map iteration order is unspecified),
+	// so only assert it is one of the two remaining siblings.
 	manager.PluginDisconnected(logger, resourceName, socketA)
 
-	require.Len(t, manager.endpointStore[resourceName], 1,
-		"the disconnected endpoint must be removed from endpointStore (I3)")
+	require.Len(t, manager.endpointStore[resourceName], 2,
+		"only the disconnected endpoint must be removed from endpointStore (I3)")
 	require.NotContains(t, manager.endpointStore[resourceName], socketA,
 		"socketA must be gone (I3)")
 	require.Contains(t, manager.endpointStore[resourceName], socketB,
 		"the surviving sibling at socketB must remain in endpointStore (I3)")
+	require.Contains(t, manager.endpointStore[resourceName], socketC,
+		"the surviving sibling at socketC must remain in endpointStore (I3)")
+	primaryAfterFirst, ok := manager.endpoints[resourceName].e.(*endpointImpl)
+	require.True(t, ok)
+	require.Contains(t, []string{socketB, socketC}, primaryAfterFirst.socketPath(),
+		"the promoted primary must be one of the two remaining siblings (I3)")
+	require.False(t, epA.stopTime.IsZero(),
+		"the removed endpoint must have setStopTime called (I3)")
+
+	// Now disconnect epC as well, leaving epB as the only remaining endpoint.
+	// The promote loop has a single candidate, so epB is deterministically
+	// the survivor chosen for m.endpoints.
+	manager.PluginDisconnected(logger, resourceName, socketC)
+
+	require.Len(t, manager.endpointStore[resourceName], 1,
+		"epB must be the only endpoint left in endpointStore (I3)")
+	require.Contains(t, manager.endpointStore[resourceName], socketB,
+		"epB at socketB must remain in endpointStore (I3)")
 	primary, ok := manager.endpoints[resourceName].e.(*endpointImpl)
 	require.True(t, ok)
 	require.Equal(t, socketB, primary.socketPath(),
-		"the surviving sibling must be promoted into m.endpoints (I3)")
+		"epB must be the survivor promoted into m.endpoints (I3)")
 	require.Equal(t, 1, manager.healthyDevices[resourceName].Len(),
 		"healthy devices must stay healthy when this was NOT the last endpoint (I3)")
-	require.False(t, epA.stopTime.IsZero(),
+	require.False(t, epC.stopTime.IsZero(),
 		"the removed endpoint must have setStopTime called (I3)")
 }
 
