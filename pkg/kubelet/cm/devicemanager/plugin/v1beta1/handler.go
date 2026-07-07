@@ -81,7 +81,7 @@ func (s *server) connectClient(ctx context.Context, name string, socketPath stri
 	s.registerClient(logger, name, c)
 	if err := c.Connect(ctx); err != nil {
 		// The kubelet expects that the plugin will retry registration if it fails.
-		// The best practice for the plugin implementation is to restart it's gRPC server completely,
+		// The best practice for the plugin implementation is to restart its gRPC server completely,
 		// while switching to another socket. Reusing the same socket name may result in
 		// inadequate recovery or non-zero downtime take over of a socket.
 		//
