@@ -250,16 +250,6 @@ func (m *ManagerImpl) PluginConnected(ctx context.Context, resourceName string, 
 	// plugin must re-register after the old one is gone; plugins are
 	// expected to retry registration on failure.
 	if existing, exists := m.endpointStore[resourceName][e.socketPath()]; exists {
-		// A registration at an already-occupied (resourceName, socketPath) is
-		// the one observable signal of a same-socket race: either a plugin
-		// reused its socket without a full server takedown, or a fast takeover
-		// left a stale endpoint holding the slot while the new plugin retries
-		// registration indefinitely. Without surfacing it, the resulting
-		// corrupted state is silent — the rejection error is only returned to
-		// the caller. Logging it (with whether the incumbent is already
-		// draining) makes the state detectable from kubelet logs: a stopped
-		// incumbent means a benign reconnect is in flight, while a live
-		// incumbent that keeps rejecting the same socket is the stuck takeover.
 		logger.Info("Device plugin registration rejected: socket already in use by a connected endpoint; possible same-socket race",
 			"resourceName", resourceName, "socketPath", e.socketPath(),
 			"incumbentStopped", existing.e.isStopped())
