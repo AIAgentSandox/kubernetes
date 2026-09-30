@@ -408,6 +408,21 @@ type taggedInUnexportedInterface struct {
 	v interface{}
 }
 
+// ifaceHolder holds an interface whose dynamic type varies per value, so
+// whether a given ifaceHolder hides a datapolicy tag is a property of the value
+// and not of the type.
+type ifaceHolder struct {
+	Any interface{}
+}
+
+// twoHoldersBehindUnexported reaches two ifaceHolder values through an
+// unexported field. The first holder is empty and the second hides a tag, so a
+// tag scan that memoized "ifaceHolder carries no tag" after the first would
+// skip the second and let the secret through.
+type twoHoldersBehindUnexported struct {
+	holders []ifaceHolder
+}
+
 // unexportedNoTags has unexported fields — including interface and map kinds a
 // mutating walk could not traverse — but no datapolicy tags anywhere, so Redact
 // must succeed without error and without panicking.
@@ -440,6 +455,12 @@ func TestRedactUnexportedTaggedField(t *testing.T) {
 	}, {
 		name:  "tag hidden behind a pointer in an unexported interface value",
 		value: &taggedInUnexportedInterface{v: &hiddenTagged{Token: marker}},
+	}, {
+		name: "tag in the second of two same-typed interface holders",
+		value: &twoHoldersBehindUnexported{holders: []ifaceHolder{
+			{Any: nil},
+			{Any: hiddenTagged{Token: marker}},
+		}},
 	}}
 	for _, tc := range errorCases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -465,16 +486,24 @@ func TestRedactUnexportedTaggedField(t *testing.T) {
 }
 
 // TestRedactNilAndNonPointer verifies Redact does not panic on inputs it cannot
-// mutate.
+// mutate: a nil input holds nothing to redact and succeeds, while a value passed
+// by value fails closed rather than returning success on an unredacted copy.
 func TestRedactNilAndNonPointer(t *testing.T) {
-	// nil interface
+	// nil interface: nothing to redact
 	if err := Redact(nil); err != nil {
-		t.Fatalf("Redact(nil) failed: %v", err)
+		t.Errorf("Redact(nil) failed: %v", err)
 	}
-	// non-pointer struct cannot be mutated but must not panic
+	// typed nil pointer: nothing to redact
+	if err := Redact((*redactString)(nil)); err != nil {
+		t.Errorf("Redact(typed nil pointer) failed: %v", err)
+	}
+	// non-pointer struct cannot be mutated: must error, not silently succeed
 	v := redactString{Token: marker}
-	if err := Redact(v); err != nil {
-		t.Fatalf("Redact(non-pointer) failed: %v", err)
+	if err := Redact(v); err == nil {
+		t.Errorf("expected error redacting a non-pointer, got nil")
+	}
+	if v.Token != marker {
+		t.Errorf("Redact mutated the caller's copy: Token = %q", v.Token)
 	}
 }
 

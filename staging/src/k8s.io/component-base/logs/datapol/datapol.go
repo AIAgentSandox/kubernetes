@@ -39,6 +39,12 @@ const redacted = "CLASSIFIED"
 // deep copy of any object they do not want mutated. Fields without a datapolicy
 // tag are left untouched, but nested structs, slices, and maps are traversed so
 // that tagged fields nested arbitrarily deep are still redacted.
+//
+// A nil obj (or a nil pointer) holds nothing to redact and succeeds. Anything
+// else that reflection cannot overwrite — a value passed by value, an
+// unexported field hiding a tag, a kind the walk does not understand — returns
+// an error, so redaction fails closed instead of handing back a value that
+// still carries secrets.
 func Redact(obj interface{}) (retErr error) {
 	defer func() {
 		if r := recover(); r != nil {
@@ -55,10 +61,11 @@ func Redact(obj interface{}) (retErr error) {
 		}
 		v = v.Elem()
 	}
-	// A non-pointer value cannot be mutated in place; silently return rather
-	// than erroring, because the caller cannot fix the problem at runtime.
+	// A non-addressable value cannot be mutated in place, so any tagged field it
+	// carries would survive unredacted. Fail closed: returning nil here would
+	// let a caller that forgot the pointer log a secret silently.
 	if !v.CanSet() {
-		return nil
+		return fmt.Errorf("cannot redact value of type %s in place: Redact requires a pointer", reflect.TypeOf(obj))
 	}
 	return redactWalk(v, map[visitKey]struct{}{})
 }
@@ -170,7 +177,7 @@ func redactWalk(v reflect.Value, visited map[visitKey]struct{}) error {
 				// skipping it blindly would silently leak a datapolicy-tagged
 				// field nested below. Inspect the subtree read-only and fail
 				// closed if it hides a tag we would be unable to redact.
-				if path := findDatapolicyTag(fv, sf.Name, map[reflect.Type]struct{}{}); path != "" {
+				if path := findDatapolicyTag(fv, sf.Name, map[visitKey]struct{}{}); path != "" {
 					return fmt.Errorf("cannot redact datapolicy-tagged field reached through unexported field %s.%s: found tag at %s", t, sf.Name, path)
 				}
 				continue
@@ -226,30 +233,36 @@ func redactWalk(v reflect.Value, visited map[visitKey]struct{}) error {
 // such a subtree hides a tagged field that should have been redacted. It only
 // reads values (it never calls Set or Interface), so it is safe on the
 // read-only reflect.Values that unexported fields yield, where a mutating walk
-// would panic. seenTypes bounds recursion on self-referential types: detection
-// is structural, so once a type has been fully scanned without a tag, revisiting
-// it can add nothing. It returns a dotted field path to the first tag found, or
-// "" if the subtree carries none.
-func findDatapolicyTag(v reflect.Value, path string, seenTypes map[reflect.Type]struct{}) string {
+// would panic. It returns a dotted field path to the first tag found, or "" if
+// the subtree carries none.
+//
+// Recursion is bounded by value identity (the same visited set redactWalk uses)
+// rather than by type. Memoizing per type would be wrong: whether a type
+// carries a tag is not a property of the type alone once an interface is in
+// play, because two values of the same type can hold different dynamic types
+// (one nil, one a tagged struct). Marking the type clean after the first value
+// would then skip the second and leak it. Value identity is safe because the
+// same pointer, map, or slice always yields the same answer, and struct nesting
+// by value is finite, so every cycle must pass through a guarded kind.
+func findDatapolicyTag(v reflect.Value, path string, visited map[visitKey]struct{}) string {
+	if seen(v, visited) {
+		return ""
+	}
 	switch v.Kind() {
 	case reflect.Pointer, reflect.Interface:
 		if v.IsNil() {
 			return ""
 		}
-		return findDatapolicyTag(v.Elem(), path, seenTypes)
+		return findDatapolicyTag(v.Elem(), path, visited)
 	case reflect.Struct:
 		t := v.Type()
-		if _, ok := seenTypes[t]; ok {
-			return ""
-		}
-		seenTypes[t] = struct{}{}
 		for i := 0; i < t.NumField(); i++ {
 			sf := t.Field(i)
 			fieldPath := path + "." + sf.Name
 			if _, ok := sf.Tag.Lookup("datapolicy"); ok {
 				return fieldPath
 			}
-			if p := findDatapolicyTag(v.Field(i), fieldPath, seenTypes); p != "" {
+			if p := findDatapolicyTag(v.Field(i), fieldPath, visited); p != "" {
 				return p
 			}
 		}
@@ -259,7 +272,7 @@ func findDatapolicyTag(v reflect.Value, path string, seenTypes map[reflect.Type]
 		// dynamic types, so no single element is representative. An empty
 		// container holds no value to redact, so finding no tag is correct.
 		for i := 0; i < v.Len(); i++ {
-			if p := findDatapolicyTag(v.Index(i), path, seenTypes); p != "" {
+			if p := findDatapolicyTag(v.Index(i), path, visited); p != "" {
 				return p
 			}
 		}
@@ -268,7 +281,7 @@ func findDatapolicyTag(v reflect.Value, path string, seenTypes map[reflect.Type]
 		iter := v.MapRange()
 		for iter.Next() {
 			// Match redactWalk, which only redacts map values, not keys.
-			if p := findDatapolicyTag(iter.Value(), path, seenTypes); p != "" {
+			if p := findDatapolicyTag(iter.Value(), path, visited); p != "" {
 				return p
 			}
 		}

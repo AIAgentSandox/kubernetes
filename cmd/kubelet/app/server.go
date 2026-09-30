@@ -268,7 +268,7 @@ is checked every 20 seconds (also configurable with a flag).`,
 				if redactErr := datapol.Redact(safeConfig); redactErr != nil {
 					return fmt.Errorf("failed to validate kubelet configuration, error: %w (config redaction also failed: %w)", err, redactErr)
 				}
-				return fmt.Errorf("failed to validate kubelet configuration, error: %w, path: %s", err, safeConfig)
+				return fmt.Errorf("failed to validate kubelet configuration, error: %w, configuration: %+v", err, safeConfig)
 			}
 
 			if (kubeletConfig.KubeletCgroups != "" && kubeletConfig.KubeReservedCgroup != "") && (strings.Index(kubeletConfig.KubeletCgroups, kubeletConfig.KubeReservedCgroup) != 0) {
