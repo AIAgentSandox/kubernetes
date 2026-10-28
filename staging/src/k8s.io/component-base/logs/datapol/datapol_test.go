@@ -24,7 +24,6 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	"k8s.io/klog/v2/ktesting"
 )
 
 const (
@@ -60,7 +59,6 @@ type datapolBehindPointer struct {
 }
 
 func TestValidate(t *testing.T) {
-	logger, _ := ktesting.NewTestContext(t)
 	testcases := []struct {
 		name      string
 		value     interface{}
@@ -141,7 +139,7 @@ func TestValidate(t *testing.T) {
 		expect: []string{},
 	}}
 	for _, tc := range testcases {
-		res := Verify(logger, tc.value)
+		res := Verify(tc.value)
 		if !assert.ElementsMatch(t, tc.expect, res) {
 			t.Errorf("Wrong set of tags for %q. expect %v, got %v", tc.name, tc.expect, res)
 		}
@@ -255,6 +253,23 @@ func TestRedact(t *testing.T) {
 	}, {
 		name:   "string slice tagged field is redacted to single sentinel",
 		value:  &redactStringSlice{Secrets: []string{marker, "another"}},
+		expect: &redactStringSlice{Secrets: []string{redacted}},
+	}, {
+		// An unset slice holds nothing to redact, so it must stay nil rather
+		// than gain a sentinel: writing one would make `omitempty` fields show
+		// up in serialized output (e.g. /configz) that the input never had.
+		name:   "nil byte slice tagged field is left nil",
+		value:  &redactBytes{Secret: nil},
+		expect: &redactBytes{Secret: nil},
+	}, {
+		name:   "nil string slice tagged field is left nil",
+		value:  &redactStringSlice{Secrets: nil},
+		expect: &redactStringSlice{Secrets: nil},
+	}, {
+		// An empty-but-non-nil slice was present in the input, so redacting it
+		// to the sentinel is correct and does not resurrect an absent field.
+		name:   "empty non-nil string slice tagged field is redacted",
+		value:  &redactStringSlice{Secrets: []string{}},
 		expect: &redactStringSlice{Secrets: []string{redacted}},
 	}, {
 		name:   "nested struct with tagged field is redacted, siblings preserved",

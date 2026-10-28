@@ -36,6 +36,10 @@ type secretConfig struct {
 	Public          string              `json:"public"`
 	Token           string              `json:"token" datapolicy:"token"`
 	Headers         map[string][]string `json:"headers" datapolicy:"token"`
+	// KeyData mirrors the shape of ExtenderTLSConfig.KeyData: a tagged byte
+	// slice that is omitted from the output when unset. Redaction must leave it
+	// nil so `omitempty` still drops it.
+	KeyData []byte `json:"keyData,omitempty" datapolicy:"security-key"`
 }
 
 func (c *secretConfig) GetObjectKind() schema.ObjectKind { return &c.TypeMeta }
@@ -45,6 +49,10 @@ func (c *secretConfig) DeepCopyObject() runtime.Object {
 		TypeMeta: c.TypeMeta,
 		Public:   c.Public,
 		Token:    c.Token,
+	}
+	if c.KeyData != nil {
+		cp.KeyData = make([]byte, len(c.KeyData))
+		copy(cp.KeyData, c.KeyData)
 	}
 	if c.Headers != nil {
 		cp.Headers = make(map[string][]string, len(c.Headers))
@@ -221,6 +229,11 @@ func TestConfigzRedactsDatapolicyFields(t *testing.T) {
 	}
 	if got := cfg.Headers["Authorization"]; len(got) != 1 || got[0] != "Bearer abc123" {
 		t.Errorf("registered config was mutated: headers = %v", cfg.Headers)
+	}
+	// An unset tagged slice must stay nil through redaction so that its
+	// `omitempty` tag still keeps it out of the output.
+	if strings.Contains(out, "keyData") {
+		t.Errorf("expected unset omitempty field to be omitted, got: %s", out)
 	}
 }
 

@@ -295,7 +295,9 @@ func findDatapolicyTag(v reflect.Value, path string, visited map[visitKey]struct
 // redactValue overwrites the value of a datapolicy-tagged field. Strings,
 // byte slices, and string slices are replaced with the "CLASSIFIED" sentinel;
 // maps preserve their keys but have their leaf values redacted; pointers and
-// interfaces are dereferenced; any other scalar is zeroed.
+// interfaces are dereferenced; any other scalar is zeroed. Nil pointers,
+// interfaces, and slices are left nil, since an unset field holds nothing to
+// redact.
 //
 // It returns an error if it cannot actually overwrite a value it was asked to
 // redact — for example a leaf that reflection reports as not settable. Every
@@ -339,6 +341,12 @@ func redactValue(v reflect.Value, visited map[visitKey]struct{}) error {
 		v.Set(cp)
 		return nil
 	case reflect.Slice:
+		// A nil slice holds no value to redact; leave it nil rather than
+		// materializing a sentinel for a field that was not set, which would
+		// also defeat `omitempty` when the object is serialized.
+		if v.IsNil() {
+			return nil
+		}
 		switch v.Type().Elem().Kind() {
 		case reflect.Uint8:
 			// []byte — terminal replacement. This overwrites the slice header
@@ -420,10 +428,11 @@ func notSettableErr(v reflect.Value) error {
 
 // Verify returns a list of the datatypes contained in the argument that can be
 // considered sensitive w.r.t. to logging
-func Verify(logger klog.Logger, value interface{}) []string {
+func Verify(value interface{}) []string {
 	defer func() {
 		if r := recover(); r != nil {
-			logger.Error(nil, "Error while inspecting arguments for sensitive data", "panic", r)
+			//TODO maybe export a metric
+			klog.Warningf("Error while inspecting arguments for sensitive data: %v", r)
 		}
 	}()
 	t := reflect.ValueOf(value)
