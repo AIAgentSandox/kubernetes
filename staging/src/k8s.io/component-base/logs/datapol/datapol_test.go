@@ -601,3 +601,157 @@ func TestRedactAliasedSubslice(t *testing.T) {
 		}
 	}
 }
+
+// aliasInner sits at offset 0 of aliasOuter, so a *aliasInner aimed at that
+// field and the enclosing *aliasOuter share an address while differing in type.
+type aliasInner struct {
+	X string
+}
+
+// aliasOuter carries its tagged field after the embedded-by-value struct, so a
+// visited set keyed on the address alone skips the tag when the inner alias is
+// walked first.
+type aliasOuter struct {
+	I      aliasInner
+	Secret string `datapolicy:"token"`
+}
+
+// aliasedPointers reaches the same address twice at different types. Field order
+// matters: A is walked first and records the address, so B is what a type-blind
+// visited set would skip.
+type aliasedPointers struct {
+	A *aliasInner
+	B *aliasOuter
+}
+
+// TestRedactAliasedPointersDistinctTypes proves that a pointer to a struct and a
+// pointer to that struct's first field are distinct traversal nodes even though
+// reflect.Value.Pointer() reports the same address for both. Keying the visited
+// set on the address alone makes whichever is walked first mark the other as
+// already seen, so the larger struct's remaining fields are never descended into
+// and Redact still returns nil — a fail-open leak that depends on struct field
+// order. The standard library keys its own visited set on the type for the same
+// reason (reflect.DeepEqual's visit struct).
+func TestRedactAliasedPointersDistinctTypes(t *testing.T) {
+	o := &aliasOuter{Secret: marker}
+	holder := &aliasedPointers{A: &o.I, B: o}
+
+	if err := Redact(holder); err != nil {
+		t.Fatalf("Redact failed: %v", err)
+	}
+	if o.Secret != redacted {
+		t.Errorf("Secret not redacted through address-aliased pointers of differing types: got %q", o.Secret)
+	}
+}
+
+// aliasedArrayPointers reaches an array and its element 0 at the same address,
+// the same collision class as aliasedPointers but for *[N]T versus *T.
+type aliasedArrayPointers struct {
+	Elem *hiddenTagged
+	All  *[2]hiddenTagged
+}
+
+// TestRedactAliasedArrayPointer proves the same collision is caught for a
+// pointer to an array and a pointer to its first element: Elem records the
+// address, and a type-blind visited set would then skip All, leaving every
+// element past the first unredacted.
+func TestRedactAliasedArrayPointer(t *testing.T) {
+	arr := &[2]hiddenTagged{{Token: marker}, {Token: marker}}
+	holder := &aliasedArrayPointers{Elem: &arr[0], All: arr}
+
+	if err := Redact(holder); err != nil {
+		t.Fatalf("Redact failed: %v", err)
+	}
+	for i := range arr {
+		if arr[i].Token != redacted {
+			t.Errorf("Token[%d] not redacted through aliased array pointer: got %q", i, arr[i].Token)
+		}
+	}
+}
+
+// taggedMapKey is a comparable struct carrying a datapolicy tag, usable as a map
+// key so the tag is reachable only through the key.
+type taggedMapKey struct {
+	Token string `datapolicy:"token"`
+}
+
+// keyTagUntaggedMap hides a tag in the key type of an untagged map, which
+// redactWalk traverses.
+type keyTagUntaggedMap struct {
+	Routes map[taggedMapKey]string
+}
+
+// keyTagTaggedMap hides a tag in the key type of a tagged map, which redactValue
+// handles. A tagged map deliberately preserves its keys, so the tag inside one
+// would survive.
+type keyTagTaggedMap struct {
+	Routes map[taggedMapKey]string `datapolicy:"token"`
+}
+
+// keyTagPointerKey reaches the tag through a pointer map key.
+type keyTagPointerKey struct {
+	Routes map[*taggedMapKey]string
+}
+
+// keyTagBehindUnexported hides the whole map below an unexported field, so the
+// read-only scan is what has to notice the key.
+type keyTagBehindUnexported struct {
+	routes map[taggedMapKey]string
+}
+
+// TestRedactMapKeyTag verifies Redact fails closed when a datapolicy tag is
+// reachable only through a map key. Reflection offers no settable view of a key,
+// so redacting the map's values would hand the caller an object that still
+// carries the secret in its keys while reporting success — and callers such as
+// configz.Set and the kubelet's startup log treat a nil error as "safe to
+// serve". It would also make the package contradict itself: datatypes, the
+// engine behind Verify, does inspect keys, so Verify reports such an object
+// sensitive.
+func TestRedactMapKeyTag(t *testing.T) {
+	errorCases := []struct {
+		name  string
+		value interface{}
+	}{{
+		name:  "tagged struct key under an untagged map",
+		value: &keyTagUntaggedMap{Routes: map[taggedMapKey]string{{Token: marker}: "a"}},
+	}, {
+		name:  "tagged struct key under a tagged map",
+		value: &keyTagTaggedMap{Routes: map[taggedMapKey]string{{Token: marker}: "a"}},
+	}, {
+		name:  "tag reached through a pointer map key",
+		value: &keyTagPointerKey{Routes: map[*taggedMapKey]string{{Token: marker}: "a"}},
+	}, {
+		name:  "tagged map key below an unexported field",
+		value: &keyTagBehindUnexported{routes: map[taggedMapKey]string{{Token: marker}: "a"}},
+	}}
+	for _, tc := range errorCases {
+		t.Run(tc.name, func(t *testing.T) {
+			if err := Redact(tc.value); err == nil {
+				t.Errorf("expected error redacting %q, got nil", tc.name)
+			}
+		})
+	}
+
+	// An empty map of the same type holds no key, so there is no unredactable
+	// value and nothing to fail closed over. This keeps the check value-based
+	// rather than type-based: erroring on the type alone would reject a config
+	// that never populated the map.
+	t.Run("empty map with a taggable key type succeeds", func(t *testing.T) {
+		v := &keyTagUntaggedMap{Routes: map[taggedMapKey]string{}}
+		if err := Redact(v); err != nil {
+			t.Errorf("unexpected error redacting empty map: %v", err)
+		}
+	})
+
+	// The common shape — string keys carry no tags — must be unaffected, with
+	// the values still redacted.
+	t.Run("string-keyed tagged map still redacts its values", func(t *testing.T) {
+		v := &redactHeader{StaticPodURLHeader: map[string][]string{"Authorization": {marker}}}
+		if err := Redact(v); err != nil {
+			t.Fatalf("Redact failed: %v", err)
+		}
+		if got := v.StaticPodURLHeader["Authorization"]; len(got) != 1 || got[0] != redacted {
+			t.Errorf("string-keyed map value not redacted: got %v", got)
+		}
+	})
+}

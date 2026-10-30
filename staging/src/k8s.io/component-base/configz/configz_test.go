@@ -30,7 +30,8 @@ import (
 )
 
 // secretConfig is a minimal runtime.Object carrying a datapolicy-tagged field,
-// used to verify that MarshalJSON redacts sensitive values.
+// used to verify that Set redacts sensitive values before storing them, and
+// that MarshalJSON therefore serves an already-redacted object.
 type secretConfig struct {
 	metav1.TypeMeta `json:",inline"`
 	Public          string              `json:"public"`

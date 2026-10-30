@@ -33,18 +33,28 @@ import (
 // `datapolicy`. It matches the flagz/zpages "CLASSIFIED" convention.
 const redacted = "CLASSIFIED"
 
-// Redact walks obj via reflection and replaces the value of every field tagged
-// with `datapolicy` (regardless of the tag's value) with the string
-// "CLASSIFIED". Redaction happens in place, so callers MUST pass a pointer to a
-// deep copy of any object they do not want mutated. Fields without a datapolicy
-// tag are left untouched, but nested structs, slices, and maps are traversed so
-// that tagged fields nested arbitrarily deep are still redacted.
+// Redact walks obj via reflection and overwrites the value of every field
+// tagged with `datapolicy` (regardless of the tag's value). Redaction happens
+// in place, so callers MUST pass a pointer to a deep copy of any object they do
+// not want mutated. Fields without a datapolicy tag are left untouched, but
+// nested structs, slices, and maps are traversed so that tagged fields nested
+// arbitrarily deep are still redacted.
+//
+// What a tagged field is overwritten with depends on its kind, so a caller
+// must not read a visible "CLASSIFIED" sentinel as proof that redaction ran:
+//   - strings, byte slices, and string slices become the "CLASSIFIED" sentinel;
+//   - a map keeps its keys and has its leaf values redacted;
+//   - every other scalar, and a struct, is zeroed rather than recursed into, so
+//     a tagged int64 becomes 0, indistinguishable from unset;
+//   - a nil pointer, interface, or slice is left nil, since an unset field
+//     holds nothing to redact and writing a sentinel over it would also defeat
+//     `omitempty` when the object is serialized.
 //
 // A nil obj (or a nil pointer) holds nothing to redact and succeeds. Anything
 // else that reflection cannot overwrite — a value passed by value, an
-// unexported field hiding a tag, a kind the walk does not understand — returns
-// an error, so redaction fails closed instead of handing back a value that
-// still carries secrets.
+// unexported field hiding a tag, a tag reached through a map key, a kind the
+// walk does not understand — returns an error, so redaction fails closed
+// instead of handing back a value that still carries secrets.
 func Redact(obj interface{}) (retErr error) {
 	defer func() {
 		if r := recover(); r != nil {
@@ -75,7 +85,18 @@ func Redact(obj interface{}) (retErr error) {
 // backing array but span different ranges (e.g. s and s[:1]) so that aliased
 // sub-slices are still fully walked while a genuine self-referential slice is
 // still caught. For pointers and maps length is always 0.
+//
+// typ is part of the identity because an address alone does not identify a
+// traversal node: a pointer to a struct and a pointer to that struct's first
+// (or embedded) field share an address but have different types, as do *[N]T
+// and a *T aimed at element 0. Keying on the address alone would let whichever
+// alias is walked first mark the other as visited, skipping the rest of the
+// larger value unredacted while Redact still reported success — a fail-open
+// leak dependent on struct field order. The standard library keys its own
+// visited set the same way: reflect.DeepEqual's visit struct carries the type
+// alongside the two addresses.
 type visitKey struct {
+	typ    reflect.Type
 	ptr    uintptr
 	length int
 }
@@ -94,7 +115,7 @@ func seen(v reflect.Value, visited map[visitKey]struct{}) bool {
 		if v.IsNil() {
 			return false
 		}
-		key = visitKey{ptr: v.Pointer()}
+		key = visitKey{typ: v.Type(), ptr: v.Pointer()}
 	case reflect.Slice:
 		if v.IsNil() {
 			return false
@@ -102,7 +123,7 @@ func seen(v reflect.Value, visited map[visitKey]struct{}) bool {
 		// A slice's identity is its backing-array address plus its length: a
 		// self-referential slice repeats both, while a distinct sub-slice of a
 		// shared backing array differs in length and must still be walked.
-		key = visitKey{ptr: v.Pointer(), length: v.Len()}
+		key = visitKey{typ: v.Type(), ptr: v.Pointer(), length: v.Len()}
 	default:
 		return false
 	}
@@ -195,6 +216,9 @@ func redactWalk(v reflect.Value, visited map[visitKey]struct{}) error {
 		}
 		return nil
 	case reflect.Map:
+		if err := checkMapKeys(v); err != nil {
+			return err
+		}
 		iter := v.MapRange()
 		for iter.Next() {
 			// Map values are not addressable, so operate on a settable copy and
@@ -280,7 +304,13 @@ func findDatapolicyTag(v reflect.Value, path string, visited map[visitKey]struct
 	case reflect.Map:
 		iter := v.MapRange()
 		for iter.Next() {
-			// Match redactWalk, which only redacts map values, not keys.
+			// Keys as well as values. A tag reached through a map key can never
+			// be redacted, because a key cannot be overwritten in place, so a
+			// subtree hiding one must be reported rather than look clean: the
+			// callers of this scan exist to fail closed on exactly that.
+			if p := findDatapolicyTag(iter.Key(), path, visited); p != "" {
+				return p
+			}
 			if p := findDatapolicyTag(iter.Value(), path, visited); p != "" {
 				return p
 			}
@@ -295,9 +325,9 @@ func findDatapolicyTag(v reflect.Value, path string, visited map[visitKey]struct
 // redactValue overwrites the value of a datapolicy-tagged field. Strings,
 // byte slices, and string slices are replaced with the "CLASSIFIED" sentinel;
 // maps preserve their keys but have their leaf values redacted; pointers and
-// interfaces are dereferenced; any other scalar is zeroed. Nil pointers,
-// interfaces, and slices are left nil, since an unset field holds nothing to
-// redact.
+// interfaces are dereferenced; every other scalar, and a struct, is zeroed
+// rather than recursed into. Nil pointers, interfaces, and slices are left nil,
+// since an unset field holds nothing to redact.
 //
 // It returns an error if it cannot actually overwrite a value it was asked to
 // redact — for example a leaf that reflection reports as not settable. Every
@@ -398,6 +428,12 @@ func redactValue(v reflect.Value, visited map[visitKey]struct{}) error {
 		if seen(v, visited) {
 			return nil
 		}
+		// Keys are deliberately preserved — a tagged map keeps its shape and
+		// redacts its values — but a tag reached through the key type is a
+		// different matter, and checkMapKeys fails closed on it.
+		if err := checkMapKeys(v); err != nil {
+			return err
+		}
 		iter := v.MapRange()
 		for iter.Next() {
 			mv := iter.Value()
@@ -417,6 +453,24 @@ func redactValue(v reflect.Value, visited map[visitKey]struct{}) error {
 		v.Set(reflect.Zero(v.Type()))
 		return nil
 	}
+}
+
+// checkMapKeys scans the keys of map v read-only for a datapolicy tag and
+// returns an error if it finds one. A map key cannot be overwritten in place —
+// reflection offers no settable view of it — so a tag reached through the key
+// type could never be redacted, and returning nil would hand the caller a map
+// that still carries the secret in its keys while reporting success. Both
+// traversals call this so neither can report a clean map that datatypes (the
+// engine behind Verify, which does inspect keys) reports as sensitive.
+func checkMapKeys(v reflect.Value) error {
+	visited := map[visitKey]struct{}{}
+	iter := v.MapRange()
+	for iter.Next() {
+		if path := findDatapolicyTag(iter.Key(), "(map key)", visited); path != "" {
+			return fmt.Errorf("cannot redact datapolicy-tagged field reached through a key of map type %s: found tag at %s, and map keys cannot be overwritten in place", v.Type(), path)
+		}
+	}
+	return nil
 }
 
 // notSettableErr reports that reflection cannot overwrite v, so the

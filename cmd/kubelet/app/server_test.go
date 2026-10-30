@@ -699,11 +699,17 @@ func TestInitializeTLSSelfSignedKeyAlgorithm(t *testing.T) {
 	}
 }
 
-// TestConfigzVersionedConfigIsRedactable guards the /configz path: setConfigz
-// stores the *versioned* (v1beta1) KubeletConfiguration, and configz.MarshalJSON
-// redacts that stored object via datapol.Redact. The datapolicy tag therefore
-// must live on the v1beta1 type as well as the internal type, otherwise the
-// StaticPodURLHeader credentials leak over /configz (kubernetes#140101).
+// TestConfigzVersionedConfigIsRedactable guards that the datapolicy tag lives on
+// the *versioned* (v1beta1) KubeletConfiguration as well as the internal type.
+// setConfigz stores the versioned object and configz.Config.Set redacts a deep
+// copy of it at registration time, so a tag present only on the internal type
+// would leak the StaticPodURLHeader credentials over /configz
+// (kubernetes#140101).
+//
+// That tag is the whole of what this test asserts: it calls datapol.Redact
+// directly rather than configz.Set or the handler, so it would still pass if Set
+// stopped redacting. TestConfigzSetRedactsOnce in the configz package is what
+// pins down that redaction happens once, at Set time.
 func TestConfigzVersionedConfigIsRedactable(t *testing.T) {
 	kc := &kubeletconfiginternal.KubeletConfiguration{
 		TypeMeta: metav1.TypeMeta{
@@ -715,7 +721,7 @@ func TestConfigzVersionedConfigIsRedactable(t *testing.T) {
 		},
 	}
 
-	// Mirror what setConfigz stores and what configz.MarshalJSON serializes.
+	// Mirror what setConfigz stores and what configz.Config.Set redacts.
 	versioned, err := convertToVersionedKubeletConfig(kc)
 	require.NoError(t, err)
 	require.NoError(t, datapol.Redact(versioned))
